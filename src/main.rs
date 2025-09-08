@@ -12,7 +12,7 @@ mod utils;
 
 #[derive(Copy, Clone, Default, Debug)]
 struct TestEvent {
-    id: i64,
+    pub id: i64,
 }
 
 struct TestEventTranslator;
@@ -43,10 +43,15 @@ fn main() {
                         available = gating_sequence.get_acquire();
                         continue;
                     }
+
+                    for sequence in next..=available {
+                        let event = ring_buffer.get(sequence);
+                        println!("Id: {}", & event.id);
+                    };
                     break;
                 }
-                println!("{}", available);
-                sequence.set_plain(available);
+
+                sequence.set_release(available);
             }
         });
 

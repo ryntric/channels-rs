@@ -59,12 +59,10 @@ impl Sequencer for OneToOneSequencer {
 
     #[inline(always)]
     fn next_n(&self, n: i32) -> i64 {
-        let buffer_size: i64 = self.buffer_size;
-        let cached: i64 = self.cached.get_plain();
         let next: i64 = self.sequence.get_plain() + n as i64;
-        let wrap_point: i64 = next - buffer_size;
+        let wrap_point: i64 = next - self.buffer_size;
 
-        if wrap_point > cached {
+        if wrap_point > self.cached.get_plain() {
             self.cached.set_plain(self.wait(&self.gating_sequence, wrap_point));
         }
 

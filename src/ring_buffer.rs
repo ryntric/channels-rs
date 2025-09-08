@@ -22,9 +22,14 @@ impl<V: Default + Copy> RingBuffer<V> {
     }
 
     #[inline(always)]
-    fn element_at(&self, sequence: i64, mask: i64) -> &UnsafeCell<V> {
-        let index: usize = utils::wrap_index(sequence, mask);
-        &self.buffer[index]
+    fn element_at(&self, sequence: i64) -> *mut V {
+        let index: usize = utils::wrap_index(sequence, self.mask);
+        let cell = &self.buffer[index];
+        cell.get()
+    }
+
+    pub fn get(&self, sequence: i64) -> &V {
+        unsafe { &*self.element_at(sequence) }
     }
 
     pub fn get_sequencer(&self) -> &Box<dyn Sequencer> {
@@ -36,8 +41,8 @@ impl<V: Default + Copy> RingBuffer<V> {
         T: EventTranslatorOneArg<V, A>,
     {
         let sequence = self.sequencer.next();
-        let element = self.element_at(sequence, self.mask);
-        unsafe { translator.translate_to(&mut *element.get(), arg) }
+        let event = self.element_at(sequence);
+        unsafe { translator.translate_to(&mut *event, arg) }
         self.sequencer.publish(sequence);
     }
 }
