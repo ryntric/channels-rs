@@ -1,69 +1,59 @@
+use crate::event_translator::EventTranslatorOneArg;
 use crate::ring_buffer::RingBuffer;
 use crate::sequence::Sequence;
-use crate::sequencer::Sequencer;
+use crate::sequencer::{OneToOneSequencer, Sequencer};
 use std::hint;
-use std::sync::Arc;
 
 mod event_translator;
 mod ring_buffer;
 mod sequence;
 mod sequencer;
+mod utils;
 
-struct Event {
-    id: i32,
+#[derive(Copy, Clone, Default, Debug)]
+struct TestEvent {
+    id: i64,
 }
 
-impl Default for Event {
-    fn default() -> Self {
-        Self { id: 0 }
+struct TestEventTranslator;
+
+impl EventTranslatorOneArg<TestEvent, i64> for TestEventTranslator {
+    fn translate_to(&self, event: &mut TestEvent, arg: i64) {
+        event.id = arg;
     }
-}
-
-impl Clone for Event {
-    fn clone(&self) -> Self {
-        Self { id: self.id }
-    }
-}
-
-impl Copy for Event {
-
 }
 
 fn main() {
-    let ring_buffer: RingBuffer<Event, 8192> = RingBuffer::new();
+    let ring_buffer: RingBuffer<TestEvent,> = RingBuffer::new(8192, Box::new(OneToOneSequencer::new(8192)));
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let sequencer = ring_buffer.get_sequencer();
+            let sequence: &Sequence = sequencer.get_gating_sequence();
+            let gating_sequence: &Sequence = sequencer.get_cursor_sequence();
 
-    let sequencer = Arc::new(sequencer::OneToOneSequencer::new(8192));
+            let mut next: i64;
+            let mut available: i64;
+            loop {
+                next = sequence.get_plain() + 1;
+                available = gating_sequence.get_plain();
 
-    let arc = sequencer.clone();
-    let handle = std::thread::spawn(move || {
-        let sequence: Arc<Sequence> = arc.get_gating_sequence();
-        let gating_sequence: Arc<Sequence> = arc.get_cursor_sequence();
-
-        let mut next: i64;
-        let mut available: i64;
-        loop {
-            next = sequence.get_plain() + 1;
-            available = gating_sequence.get_plain();
-            if next > available {
                 loop {
-                    available = gating_sequence.get_acquire();
-                    if next <= available {
-                        break;
+                    if next > available {
+                        hint::spin_loop();
+                        available = gating_sequence.get_acquire();
+                        continue;
                     }
-                    hint::spin_loop();
+                    break;
                 }
+                println!("{}", available);
+                sequence.set_plain(available);
             }
+        });
 
-            for i in next..=available {
-                hint::spin_loop();
-            }
-            println!("{}", available);
-            sequence.set_plain(available);
+        for i in 0..100_000_000_0_000_000_000i64 {
+            ring_buffer.publish_event(TestEventTranslator, i);
         }
     });
 
-    for i in (0..1_000_000_000).step_by(5000) {
-        sequencer.publish(sequencer.next_n(5000));
-    }
-    handle.join().unwrap();
+
 }
