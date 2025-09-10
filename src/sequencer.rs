@@ -8,7 +8,9 @@ pub enum SequencerType {
 }
 
 pub trait Sequencer: Sync + Send {
-    fn next(&self) -> i64;
+    fn next(&self) -> i64 {
+        self.next_n(1)
+    }
 
     fn next_n(&self, n: i32) -> i64;
 
@@ -57,10 +59,6 @@ impl OneToOneSequencer {
 }
 
 impl Sequencer for OneToOneSequencer {
-    fn next(&self) -> i64 {
-        self.next_n(1)
-    }
-
     #[inline(always)]
     fn next_n(&self, n: i32) -> i64 {
         let next: i64 = self.sequence.get_plain() + n as i64;
@@ -116,10 +114,6 @@ impl ManyToOneSequencer {
 }
 
 impl Sequencer for ManyToOneSequencer {
-    fn next(&self) -> i64 {
-        self.next_n(1)
-    }
-
     fn next_n(&self, n: i32) -> i64 {
         let n: i64 = n as i64;
         let next: i64 = self.cursor_sequence.get_and_add_volatile(n) + n;

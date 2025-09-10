@@ -47,7 +47,8 @@ fn main() {
                     }
 
                     for sequence in next..=available {
-                        let _ = ring_buffer.get(sequence);
+                        let event = ring_buffer.get(sequence);
+                        println!("Event id is: {}", event.id);
                     }
                     break;
                 }

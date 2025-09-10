@@ -1,6 +1,6 @@
 use crate::constants::BUFFER_PADDING;
 use crate::event_translator::EventTranslatorOneArg;
-use crate::sequencer::{Sequencer, SequencerType};
+use crate::sequencer::{ManyToOneSequencer, OneToOneSequencer, Sequencer, SequencerType};
 use crate::utils;
 use std::cell::UnsafeCell;
 
@@ -13,9 +13,23 @@ pub struct RingBuffer<V: Default> {
 impl<V: Default> RingBuffer<V> {
     pub fn new(buffer_size: usize, sequencer_type: SequencerType) -> RingBuffer<V> {
         RingBuffer {
-            buffer: utils::create_padded_buffer(buffer_size, BUFFER_PADDING),
-            sequencer: utils::create_sequencer(buffer_size, sequencer_type),
+            buffer: Self::create_buffer(buffer_size),
+            sequencer: Self::create_sequencer(buffer_size, sequencer_type),
             mask: (buffer_size - 1) as i64,
+        }
+    }
+
+    pub fn create_buffer<T: Default>(buffer_size: usize) -> Box<[UnsafeCell<T>]> {
+        (0..buffer_size + (BUFFER_PADDING << 1))
+            .map(|_| UnsafeCell::new(T::default()))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    }
+
+    fn create_sequencer(buffer_size: usize, sequencer_type: SequencerType) -> Box<dyn Sequencer> {
+        match sequencer_type {
+            SequencerType::SingleProducer => Box::new(OneToOneSequencer::new(buffer_size)),
+            SequencerType::MultiProducer => Box::new(ManyToOneSequencer::new(buffer_size)),
         }
     }
 
@@ -45,6 +59,6 @@ impl<V: Default> RingBuffer<V> {
     }
 }
 
-unsafe impl<V: Default + Copy> Sync for RingBuffer<V> {}
+unsafe impl<V: Default> Sync for RingBuffer<V> {}
 
-unsafe impl<V: Default + Copy> Send for RingBuffer<V> {}
+unsafe impl<V: Default> Send for RingBuffer<V> {}
