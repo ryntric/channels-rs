@@ -1,5 +1,6 @@
+use crate::constants::BUFFER_PADDING;
 use crate::event_translator::EventTranslatorOneArg;
-use crate::sequencer::Sequencer;
+use crate::sequencer::{Sequencer, SequencerType};
 use crate::utils;
 use std::cell::UnsafeCell;
 
@@ -10,20 +11,17 @@ pub struct RingBuffer<V: Default + Copy> {
 }
 
 impl<V: Default + Copy> RingBuffer<V> {
-    pub fn new(buffer_size: usize, sequencer: Box<dyn Sequencer>) -> RingBuffer<V> {
+    pub fn new(buffer_size: usize, sequencer_type: SequencerType) -> RingBuffer<V> {
         RingBuffer {
-            buffer: (0..buffer_size)
-                .map(|_| UnsafeCell::new(V::default()))
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            sequencer,
+            buffer: utils::create_padded_buffer(buffer_size, BUFFER_PADDING),
+            sequencer: utils::create_sequencer(buffer_size, sequencer_type),
             mask: (buffer_size - 1) as i64,
         }
     }
 
     #[inline(always)]
     fn element_at(&self, sequence: i64) -> *mut V {
-        let index: usize = utils::wrap_index(sequence, self.mask);
+        let index: usize = utils::wrap_index(sequence, self.mask, BUFFER_PADDING);
         let cell = &self.buffer[index];
         cell.get()
     }

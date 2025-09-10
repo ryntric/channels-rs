@@ -1,4 +1,10 @@
 use crate::sequence::Sequence;
+use crate::utils;
+
+pub enum SequencerType {
+    SingleProducer,
+    MultiProducer,
+}
 
 pub trait Sequencer: Sync + Send {
     fn next(&self) -> i64;
@@ -39,13 +45,10 @@ pub struct OneToOneSequencer {
 
 impl OneToOneSequencer {
     pub fn new(buffer_size: usize) -> Self {
-        if buffer_size.count_ones() != 1 {
-            panic!("buffer size must be a power of two")
-        };
         OneToOneSequencer {
             sequence: Sequence::default(),
             cached: Sequence::default(),
-            buffer_size: buffer_size as i64,
+            buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
             cursor_sequence: Sequence::default(),
             gating_sequence: Sequence::default(),
         }

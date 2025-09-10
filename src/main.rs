@@ -1,14 +1,17 @@
+use crate::availability_buffer::AvailabilityBuffer;
 use crate::event_translator::EventTranslatorOneArg;
 use crate::ring_buffer::RingBuffer;
 use crate::sequence::Sequence;
-use crate::sequencer::{OneToOneSequencer, Sequencer};
+use crate::sequencer::SequencerType;
 use std::hint;
 
-mod event_translator;
-mod ring_buffer;
-mod sequence;
-mod sequencer;
-mod utils;
+mod availability_buffer;
+mod constants;
+pub(crate) mod event_translator;
+pub(crate) mod ring_buffer;
+pub(crate) mod sequence;
+pub(crate) mod sequencer;
+pub(crate) mod utils;
 
 #[derive(Copy, Clone, Default, Debug)]
 struct TestEvent {
@@ -24,7 +27,7 @@ impl EventTranslatorOneArg<TestEvent, i64> for TestEventTranslator {
 }
 
 fn main() {
-    let ring_buffer: RingBuffer<TestEvent,> = RingBuffer::new(8192, Box::new(OneToOneSequencer::new(8192)));
+    let ring_buffer: RingBuffer<TestEvent> = RingBuffer::new(8192, SequencerType::SingleProducer);
     std::thread::scope(|scope| {
         scope.spawn(|| {
             let sequencer = ring_buffer.get_sequencer();
@@ -46,8 +49,8 @@ fn main() {
 
                     for sequence in next..=available {
                         let event = ring_buffer.get(sequence);
-                        println!("Id: {}", & event.id);
-                    };
+                        println!("Id: {}", &event.id);
+                    }
                     break;
                 }
 
@@ -59,6 +62,4 @@ fn main() {
             ring_buffer.publish_event(TestEventTranslator, i);
         }
     });
-
-
 }

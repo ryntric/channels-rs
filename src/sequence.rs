@@ -14,22 +14,27 @@ impl Sequence {
         }
     }
 
+    #[inline(always)]
     pub fn get_plain(&self) -> i64 {
         self.sequence.load(Ordering::Relaxed)
     }
 
+    #[inline(always)]
     pub fn set_plain(&self, value: i64) {
         self.sequence.store(value, Ordering::Relaxed);
     }
 
+    #[inline(always)]
     pub fn get_acquire(&self) -> i64 {
         self.sequence.load(Ordering::Acquire)
     }
 
+    #[inline(always)]
     pub fn set_release(&self, value: i64) {
         self.sequence.store(value, Ordering::Release);
     }
 
+    #[inline(always)]
     pub fn get_and_add_volatile(&self, value: i64) -> i64 {
         self.sequence.fetch_add(value, Ordering::AcqRel)
     }
