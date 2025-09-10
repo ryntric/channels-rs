@@ -26,7 +26,7 @@ impl EventTranslatorOneArg<TestEvent, i64> for TestEventTranslator {
 }
 
 fn main() {
-    let ring_buffer: RingBuffer<TestEvent> = RingBuffer::new(8192, SequencerType::SingleProducer);
+    let ring_buffer: RingBuffer<TestEvent> = RingBuffer::new(8192, SequencerType::MultiProducer);
     std::thread::scope(|scope| {
         scope.spawn(|| {
             let sequencer = ring_buffer.get_sequencer();
@@ -46,7 +46,8 @@ fn main() {
                         continue;
                     }
 
-                    for sequence in next..=available {
+                    let highest = sequencer.get_highest(next, available);
+                    for sequence in next..=highest {
                         let event = ring_buffer.get(sequence);
                         println!("Event id is: {}", event.id);
                     }
