@@ -1,4 +1,3 @@
-use crate::availability_buffer::AvailabilityBuffer;
 use crate::event_translator::EventTranslatorOneArg;
 use crate::ring_buffer::RingBuffer;
 use crate::sequence::Sequence;
@@ -48,8 +47,7 @@ fn main() {
                     }
 
                     for sequence in next..=available {
-                        let event = ring_buffer.get(sequence);
-                        println!("Id: {}", &event.id);
+                        let _ = ring_buffer.get(sequence);
                     }
                     break;
                 }

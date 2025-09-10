@@ -1,6 +1,6 @@
 use crate::{constants, utils};
 use std::mem::MaybeUninit;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{fence, AtomicI32, Ordering};
 
 pub(crate) struct AvailabilityBuffer {
     mask: i64,
@@ -44,5 +44,16 @@ impl AvailabilityBuffer {
         let flag = self.calculate_flag(sequence);
         let atomic = &self.buffer[index];
         atomic.store(flag, Ordering::Release);
+    }
+
+    #[inline(always)]
+    pub fn set_range(&self, low: i64, high: i64) {
+        for sequence in low..=high {
+            let index = utils::wrap_index(sequence, self.mask, constants::BUFFER_PADDING);
+            let flag = self.calculate_flag(sequence);
+            let atomic = &self.buffer[index];
+            atomic.store(flag, Ordering::Relaxed);
+        }
+        fence(Ordering::Release);
     }
 }

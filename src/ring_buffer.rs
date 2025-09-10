@@ -4,13 +4,13 @@ use crate::sequencer::{Sequencer, SequencerType};
 use crate::utils;
 use std::cell::UnsafeCell;
 
-pub struct RingBuffer<V: Default + Copy> {
+pub struct RingBuffer<V: Default> {
     buffer: Box<[UnsafeCell<V>]>,
     sequencer: Box<dyn Sequencer>,
     mask: i64,
 }
 
-impl<V: Default + Copy> RingBuffer<V> {
+impl<V: Default> RingBuffer<V> {
     pub fn new(buffer_size: usize, sequencer_type: SequencerType) -> RingBuffer<V> {
         RingBuffer {
             buffer: utils::create_padded_buffer(buffer_size, BUFFER_PADDING),

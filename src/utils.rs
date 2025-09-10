@@ -1,4 +1,3 @@
-use crate::constants;
 use crate::sequencer::{OneToOneSequencer, Sequencer, SequencerType};
 use std::cell::UnsafeCell;
 

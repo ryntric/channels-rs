@@ -1,3 +1,4 @@
+use crate::availability_buffer::AvailabilityBuffer;
 use crate::sequence::Sequence;
 use crate::utils;
 
@@ -82,6 +83,69 @@ impl Sequencer for OneToOneSequencer {
     }
 
     fn get_highest(&self, _: i64, available: i64) -> i64 {
+        available
+    }
+
+    fn get_cursor_sequence(&self) -> &Sequence {
+        &self.cursor_sequence
+    }
+
+    fn get_gating_sequence(&self) -> &Sequence {
+        &self.gating_sequence
+    }
+}
+
+pub(crate) struct ManyToOneSequencer {
+    buffer_size: i64,
+    cached: Sequence,
+    cursor_sequence: Sequence,
+    gating_sequence: Sequence,
+    availability_buffer: AvailabilityBuffer,
+}
+
+impl ManyToOneSequencer {
+    pub fn new(buffer_size: usize) -> Self {
+        Self {
+            buffer_size: buffer_size as i64,
+            cached: Sequence::default(),
+            cursor_sequence: Sequence::default(),
+            gating_sequence: Sequence::default(),
+            availability_buffer: AvailabilityBuffer::new(buffer_size),
+        }
+    }
+}
+
+impl Sequencer for ManyToOneSequencer {
+    fn next(&self) -> i64 {
+        self.next_n(1)
+    }
+
+    fn next_n(&self, n: i32) -> i64 {
+        let n: i64 = n as i64;
+        let next: i64 = self.cursor_sequence.get_and_add_volatile(n) + n;
+        let wrap_point: i64 = next - self.buffer_size;
+
+        if wrap_point > self.cached.get_plain() {
+            self.cached.set_plain(self.wait(&self.gating_sequence, wrap_point));
+        }
+
+        next
+    }
+
+    fn publish(&self, sequence: i64) {
+        self.availability_buffer.set(sequence);
+    }
+
+    fn publish_range(&self, low: i64, high: i64) {
+        self.availability_buffer.set_range(low, high);
+    }
+
+    fn get_highest(&self, next: i64, available: i64) -> i64 {
+        for sequence in next..=available {
+            if !self.availability_buffer.is_available(sequence) {
+                return sequence -1;
+            }
+        }
         available
     }
 
