@@ -31,11 +31,17 @@ impl AvailabilityBuffer {
     }
 
     #[inline(always)]
-    pub fn is_available(&self, sequence: i64) -> bool {
-        let index = utils::wrap_index(sequence, self.mask, constants::BUFFER_PADDING);
-        let flag = self.calculate_flag(sequence);
-        let atomic = &self.buffer[index];
-        atomic.load(Ordering::Acquire) == flag
+    pub fn get_available(&self, low: i64, high: i64) -> i64 {
+        fence(Ordering::Acquire);
+        for sequence in low..=high {
+            let index = utils::wrap_index(sequence, self.mask, constants::BUFFER_PADDING);
+            let flag = self.calculate_flag(sequence);
+            let atomic = &self.buffer[index];
+            if atomic.load(Ordering::Relaxed) != flag {
+                return sequence - 1;
+            }
+        }
+        high
     }
 
     #[inline(always)]

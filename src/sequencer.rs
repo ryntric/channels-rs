@@ -135,12 +135,7 @@ impl Sequencer for ManyToOneSequencer {
     }
 
     fn get_highest(&self, next: i64, available: i64) -> i64 {
-        for sequence in next..=available {
-            if !self.availability_buffer.is_available(sequence) {
-                return sequence -1;
-            }
-        }
-        available
+        self.availability_buffer.get_available(next, available)
     }
 
     fn get_cursor_sequence(&self) -> &Sequence {
