@@ -1,11 +1,14 @@
+use crate::event_handler::EvenHandler;
+use crate::event_poller::{EventPoller, EventPollerState};
 use crate::event_translator::EventTranslatorOneArg;
 use crate::ring_buffer::RingBuffer;
-use crate::sequence::Sequence;
 use crate::sequencer::SequencerType;
-use std::hint;
+use std::error::Error;
 
-mod availability_buffer;
-mod constants;
+pub(crate) mod availability_buffer;
+pub(crate) mod constants;
+pub(crate) mod event_handler;
+pub(crate) mod event_poller;
 pub(crate) mod event_translator;
 pub(crate) mod ring_buffer;
 pub(crate) mod sequence;
@@ -19,6 +22,19 @@ struct TestEvent {
 
 struct TestEventTranslator;
 
+struct TestEventHandler;
+
+impl EvenHandler<TestEvent> for TestEventHandler {
+    #[inline(always)]
+    fn on_event(&self, event: &TestEvent) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+
+    fn on_error(&self, error: Box<dyn Error>) {
+        println!("Error: {:?}", error);
+    }
+}
+
 impl EventTranslatorOneArg<TestEvent, i64> for TestEventTranslator {
     fn translate_to(&self, event: &mut TestEvent, arg: i64) {
         event.id = arg;
@@ -26,39 +42,20 @@ impl EventTranslatorOneArg<TestEvent, i64> for TestEventTranslator {
 }
 
 fn main() {
-    let ring_buffer: RingBuffer<TestEvent> = RingBuffer::new(8192, SequencerType::MultiProducer);
+    let ring_buffer: RingBuffer<TestEvent> = RingBuffer::new(8192, SequencerType::SingleProducer);
+    let poller: EventPoller<TestEvent> = EventPoller::new(&ring_buffer);
+
     std::thread::scope(|scope| {
         scope.spawn(|| {
-            let sequencer = ring_buffer.get_sequencer();
-            let sequence: &Sequence = sequencer.get_gating_sequence();
-            let gating_sequence: &Sequence = sequencer.get_cursor_sequence();
-
-            let mut next: i64;
-            let mut available: i64;
+            let handler = TestEventHandler;
             loop {
-                next = sequence.get_plain() + 1;
-                available = gating_sequence.get_plain();
-
-                loop {
-                    if next > available {
-                        hint::spin_loop();
-                        available = gating_sequence.get_acquire();
-                        continue;
-                    }
-
-                    let highest = sequencer.get_highest(next, available);
-                    for sequence in next..=highest {
-                        let event = ring_buffer.get(sequence);
-                        println!("Event id is: {}", event.id);
-                    }
-                    break;
+                if poller.poll(&handler) == EventPollerState::Idle {
+                    std::hint::spin_loop();
                 }
-
-                sequence.set_release(available);
             }
         });
 
-        for i in 0..100_000_000_0_000_000_000i64 {
+        for i in 0..1000_000_000i64 {
             ring_buffer.publish_event(TestEventTranslator, i);
         }
     });

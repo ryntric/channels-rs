@@ -59,7 +59,6 @@ impl OneToOneSequencer {
 }
 
 impl Sequencer for OneToOneSequencer {
-    #[inline(always)]
     fn next_n(&self, n: i32) -> i64 {
         let next: i64 = self.sequence.get_plain() + n as i64;
         let wrap_point: i64 = next - self.buffer_size;

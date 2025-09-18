@@ -18,9 +18,9 @@ impl AvailabilityBuffer {
     }
 
     fn init_buffer(size: usize) -> Box<[AtomicI32]> {
-        let mut buffer: Box<[MaybeUninit<AtomicI32>]> = Box::new_uninit_slice(size + (constants::BUFFER_PADDING << 1));
+        let mut buffer: Box<[MaybeUninit<AtomicI32>]> = Box::new_uninit_slice(size + (constants::ARRAY_PADDING << 1));
         for i in 0..size {
-            buffer[i + constants::BUFFER_PADDING].write(AtomicI32::new(-1));
+            buffer[i + constants::ARRAY_PADDING].write(AtomicI32::new(-1));
         }
         unsafe { buffer.assume_init() }
     }
@@ -34,7 +34,7 @@ impl AvailabilityBuffer {
     pub fn get_available(&self, low: i64, high: i64) -> i64 {
         fence(Ordering::Acquire);
         for sequence in low..=high {
-            let index = utils::wrap_index(sequence, self.mask, constants::BUFFER_PADDING);
+            let index = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
             let flag = self.calculate_flag(sequence);
             let atomic = &self.buffer[index];
             if atomic.load(Ordering::Relaxed) != flag {
@@ -43,19 +43,17 @@ impl AvailabilityBuffer {
         }
         high
     }
-
-    #[inline(always)]
+    
     pub fn set(&self, sequence: i64) {
-        let index = utils::wrap_index(sequence, self.mask, constants::BUFFER_PADDING);
+        let index = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
         let flag = self.calculate_flag(sequence);
         let atomic = &self.buffer[index];
         atomic.store(flag, Ordering::Release);
     }
-
-    #[inline(always)]
+    
     pub fn set_range(&self, low: i64, high: i64) {
         for sequence in low..=high {
-            let index = utils::wrap_index(sequence, self.mask, constants::BUFFER_PADDING);
+            let index = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
             let flag = self.calculate_flag(sequence);
             let atomic = &self.buffer[index];
             atomic.store(flag, Ordering::Relaxed);
