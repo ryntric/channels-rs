@@ -1,6 +1,7 @@
 use crate::availability_buffer::AvailabilityBuffer;
 use crate::sequence::Sequence;
 use crate::utils;
+use std::sync::Arc;
 
 pub enum SequencerType {
     SingleProducer,
@@ -20,9 +21,9 @@ pub trait Sequencer: Sync + Send {
 
     fn get_highest(&self, next: i64, available: i64) -> i64;
 
-    fn get_cursor_sequence(&self) -> &Sequence;
+    fn get_cursor_sequence(&self) -> Arc<Sequence>;
 
-    fn get_gating_sequence(&self) -> &Sequence;
+    fn get_gating_sequence(&self) -> Arc<Sequence>;
 
     #[inline(always)]
     fn wait(&self, gating_sequence: &Sequence, wrap_point: i64) -> i64 {
@@ -42,8 +43,8 @@ pub struct OneToOneSequencer {
     sequence: Sequence,
     cached: Sequence,
     buffer_size: i64,
-    cursor_sequence: Sequence,
-    gating_sequence: Sequence,
+    cursor_sequence: Arc<Sequence>,
+    gating_sequence: Arc<Sequence>,
 }
 
 impl OneToOneSequencer {
@@ -52,8 +53,8 @@ impl OneToOneSequencer {
             sequence: Sequence::default(),
             cached: Sequence::default(),
             buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
-            cursor_sequence: Sequence::default(),
-            gating_sequence: Sequence::default(),
+            cursor_sequence: Arc::new(Sequence::default()),
+            gating_sequence: Arc::new(Sequence::default()),
         }
     }
 }
@@ -83,20 +84,24 @@ impl Sequencer for OneToOneSequencer {
         available
     }
 
-    fn get_cursor_sequence(&self) -> &Sequence {
-        &self.cursor_sequence
+    fn get_cursor_sequence(&self) -> Arc<Sequence> {
+        Arc::clone(&self.cursor_sequence)
     }
 
-    fn get_gating_sequence(&self) -> &Sequence {
-        &self.gating_sequence
+    fn get_gating_sequence(&self) -> Arc<Sequence> {
+        Arc::clone(&self.gating_sequence)
     }
 }
+
+unsafe impl Send for OneToOneSequencer {}
+
+unsafe impl Sync for OneToOneSequencer {}
 
 pub(crate) struct ManyToOneSequencer {
     buffer_size: i64,
     cached: Sequence,
-    cursor_sequence: Sequence,
-    gating_sequence: Sequence,
+    cursor_sequence: Arc<Sequence>,
+    gating_sequence: Arc<Sequence>,
     availability_buffer: AvailabilityBuffer,
 }
 
@@ -105,8 +110,8 @@ impl ManyToOneSequencer {
         Self {
             buffer_size: buffer_size as i64,
             cached: Sequence::default(),
-            cursor_sequence: Sequence::default(),
-            gating_sequence: Sequence::default(),
+            cursor_sequence: Arc::new(Sequence::default()),
+            gating_sequence: Arc::new(Sequence::default()),
             availability_buffer: AvailabilityBuffer::new(buffer_size),
         }
     }
@@ -137,11 +142,15 @@ impl Sequencer for ManyToOneSequencer {
         self.availability_buffer.get_available(next, available)
     }
 
-    fn get_cursor_sequence(&self) -> &Sequence {
-        &self.cursor_sequence
+    fn get_cursor_sequence(&self) -> Arc<Sequence> {
+        Arc::clone(&self.cursor_sequence)
     }
 
-    fn get_gating_sequence(&self) -> &Sequence {
-        &self.gating_sequence
+    fn get_gating_sequence(&self) -> Arc<Sequence> {
+        Arc::clone(&self.gating_sequence)
     }
 }
+
+unsafe impl Send for ManyToOneSequencer {}
+
+unsafe impl Sync for ManyToOneSequencer {}

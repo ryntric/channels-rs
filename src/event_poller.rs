@@ -1,7 +1,7 @@
-use crate::event_handler::EvenHandler;
 use crate::ring_buffer::RingBuffer;
 use crate::sequence::Sequence;
 use crate::sequencer::Sequencer;
+use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum EventPollerState {
@@ -9,28 +9,25 @@ pub(crate) enum EventPollerState {
     Processing,
 }
 
-pub(crate) struct EventPoller<'a, T: Default> {
-    buffer: &'a RingBuffer<T>,
-    sequencer: &'a dyn Sequencer,
-    sequence: &'a Sequence,
-    gating_sequences: &'a Sequence,
+pub(crate) struct EventPoller<T> {
+    buffer: Arc<RingBuffer<T>>,
+    sequencer: Arc<dyn Sequencer>,
+    sequence: Arc<Sequence>,
+    gating_sequences: Arc<Sequence>,
 }
 
-impl<'a, T: Default> EventPoller<'a, T> {
-    pub fn new(ring_buffer: &'a RingBuffer<T>) -> Self {
+impl<T> EventPoller<T> {
+    pub fn new(ring_buffer: Arc<RingBuffer<T>>) -> Self {
         let sequencer = ring_buffer.get_sequencer();
         Self {
             buffer: ring_buffer,
-            sequencer: sequencer,
+            sequencer: sequencer.clone(),
             sequence: sequencer.get_gating_sequence(),
             gating_sequences: sequencer.get_cursor_sequence(),
         }
     }
 
-    pub fn poll<H>(&self, handler: &H) -> EventPollerState
-    where
-        H: EvenHandler<T>,
-    {
+    pub fn poll<H: Fn(T)>(&self, handler: &H) -> EventPollerState {
         let next: i64 = self.sequence.get_plain() + 1;
         let available = self.gating_sequences.get_acquire();
 
@@ -40,9 +37,7 @@ impl<'a, T: Default> EventPoller<'a, T> {
 
         let highest: i64 = self.sequencer.get_highest(next, available);
         for sequence in next..=highest {
-            if let Err(error) = handler.on_event(self.buffer.get(sequence)) {
-                handler.on_error(error);
-            }
+            handler(self.buffer.poll(sequence));
         }
 
         self.sequence.set_release(highest);
@@ -50,6 +45,6 @@ impl<'a, T: Default> EventPoller<'a, T> {
     }
 }
 
-unsafe impl<'a, T: Default> Sync for EventPoller<'a, T> {}
+unsafe impl<T> Sync for EventPoller<T> {}
 
-unsafe impl<'a, T: Default> Send for EventPoller<'a, T> {}
+unsafe impl<T> Send for EventPoller<T> {}

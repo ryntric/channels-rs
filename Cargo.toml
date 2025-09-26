@@ -3,4 +3,16 @@ name = "workers-core-rust"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"
+
+[profile.bench]
+panic = "unwind"
+
+[profile.test]
+panic = "abort"
+
 [dependencies]
