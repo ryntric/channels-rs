@@ -4,12 +4,12 @@ use crate::sequencer::Sequencer;
 use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub(crate) enum EventPollerState {
+pub enum EventPollerState {
     Idle,
     Processing,
 }
 
-pub(crate) struct EventPoller<T> {
+pub struct EventPoller<T> {
     buffer: Arc<RingBuffer<T>>,
     sequencer: Arc<dyn Sequencer>,
     sequence: Arc<Sequence>,

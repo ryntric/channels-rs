@@ -97,7 +97,7 @@ unsafe impl Send for OneToOneSequencer {}
 
 unsafe impl Sync for OneToOneSequencer {}
 
-pub(crate) struct ManyToOneSequencer {
+pub struct ManyToOneSequencer {
     buffer_size: i64,
     cached: Sequence,
     cursor_sequence: Arc<Sequence>,

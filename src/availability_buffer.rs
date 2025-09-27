@@ -2,7 +2,7 @@ use crate::{constants, utils};
 use std::mem::MaybeUninit;
 use std::sync::atomic::{fence, AtomicI32, Ordering};
 
-pub(crate) struct AvailabilityBuffer {
+pub struct AvailabilityBuffer {
     mask: i64,
     flag_shift: usize,
     buffer: Box<[AtomicI32]>,

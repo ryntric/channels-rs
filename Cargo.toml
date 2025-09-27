@@ -3,16 +3,13 @@ name = "workers-core-rust"
 version = "0.1.0"
 edition = "2024"
 
-[profile.release]
-panic = "unwind"
+[dev-dependencies]
+criterion = { version = "0.7.0" }
 
-[profile.dev]
-panic = "unwind"
+[[bench]]
+name = "one_to_one_sequencer_single_item"
+harness = false
 
-[profile.bench]
-panic = "unwind"
-
-[profile.test]
-panic = "abort"
-
-[dependencies]
+[[bench]]
+name = "one_to_one_sequencer_single_batch"
+harness = false

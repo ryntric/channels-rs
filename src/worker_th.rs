@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-pub(crate) struct WorkerThread<T: 'static, H>
+pub struct WorkerThread<T: 'static, H>
 where
     H: Fn(T) + 'static,
 {
@@ -45,6 +45,12 @@ where
                 panic!("Can not create a worker thread");
             };
         };
+    }
+    
+    pub fn stop(&self) {
+        if utils::compare_and_exchange_bool(&self.is_running, true, false, Ordering::AcqRel, Ordering::Relaxed) {
+            self.is_running.store(false, Ordering::Release);
+        }
     }
 
     fn build_thread<C: Fn() + 'static + Sync + Send>(name: String, closure: C) -> io::Result<JoinHandle<()>> {
