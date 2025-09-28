@@ -1,29 +1,31 @@
 use crate::availability_buffer::AvailabilityBuffer;
 use crate::sequence::Sequence;
 use crate::utils;
-use std::sync::Arc;
 
-pub enum SequencerType {
-    SingleProducer,
-    MultiProducer,
-}
+pub(crate) trait Sequencer: Sync + Send {
+    fn new(buffer_size: usize) -> Self;
 
-pub trait Sequencer: Sync + Send {
     fn next(&self) -> i64 {
         self.next_n(1)
     }
 
     fn next_n(&self, n: i32) -> i64;
 
-    fn publish(&self, sequence: i64);
+    fn publish_cursor_sequence(&self, sequence: i64);
 
-    fn publish_range(&self, low: i64, high: i64);
+    fn publish_cursor_sequence_range(&self, low: i64, high: i64);
 
-    fn get_highest(&self, next: i64, available: i64) -> i64;
+    fn publish_gating_sequence(&self, sequence: i64);
 
-    fn get_cursor_sequence(&self) -> Arc<Sequence>;
+    fn get_highest(&self, low: i64, high: i64) -> i64;
 
-    fn get_gating_sequence(&self) -> Arc<Sequence>;
+    fn get_cursor_sequence_relaxed(&self) -> i64;
+
+    fn get_cursor_sequence_acquire(&self) -> i64;
+
+    fn get_gating_sequence_relaxed(&self) -> i64;
+
+    fn get_gating_sequence_acquire(&self) -> i64;
 
     #[inline(always)]
     fn wait(&self, gating_sequence: &Sequence, wrap_point: i64) -> i64 {
@@ -39,118 +41,138 @@ pub trait Sequencer: Sync + Send {
     }
 }
 
-pub struct OneToOneSequencer {
+pub struct SingleProducer {
     sequence: Sequence,
     cached: Sequence,
     buffer_size: i64,
-    cursor_sequence: Arc<Sequence>,
-    gating_sequence: Arc<Sequence>,
+    cursor_sequence: Sequence,
+    gating_sequence: Sequence,
 }
 
-impl OneToOneSequencer {
-    pub fn new(buffer_size: usize) -> Self {
-        OneToOneSequencer {
+unsafe impl Send for SingleProducer {}
+
+unsafe impl Sync for SingleProducer {}
+
+impl Sequencer for SingleProducer {
+    fn new(buffer_size: usize) -> Self {
+        Self {
             sequence: Sequence::default(),
             cached: Sequence::default(),
             buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
-            cursor_sequence: Arc::new(Sequence::default()),
-            gating_sequence: Arc::new(Sequence::default()),
+            cursor_sequence: Sequence::default(),
+            gating_sequence: Sequence::default(),
         }
     }
-}
 
-impl Sequencer for OneToOneSequencer {
     fn next_n(&self, n: i32) -> i64 {
-        let next: i64 = self.sequence.get_plain() + n as i64;
+        let next: i64 = self.sequence.get_relaxed() + n as i64;
         let wrap_point: i64 = next - self.buffer_size;
 
-        if wrap_point > self.cached.get_plain() {
-            self.cached.set_plain(self.wait(&self.gating_sequence, wrap_point));
+        if wrap_point > self.cached.get_relaxed() {
+            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point));
         }
 
-        self.sequence.set_plain(next);
+        self.sequence.set_relaxed(next);
         next
     }
 
-    fn publish(&self, sequence: i64) {
+    fn publish_cursor_sequence(&self, sequence: i64) {
         self.cursor_sequence.set_release(sequence);
     }
 
-    fn publish_range(&self, _: i64, high: i64) {
+    fn publish_cursor_sequence_range(&self, _: i64, high: i64) {
         self.cursor_sequence.set_release(high)
     }
 
-    fn get_highest(&self, _: i64, available: i64) -> i64 {
-        available
+    fn publish_gating_sequence(&self, sequence: i64) {
+        self.gating_sequence.set_release(sequence);
     }
 
-    fn get_cursor_sequence(&self) -> Arc<Sequence> {
-        Arc::clone(&self.cursor_sequence)
+    fn get_highest(&self, _: i64, high: i64) -> i64 {
+        high
     }
 
-    fn get_gating_sequence(&self) -> Arc<Sequence> {
-        Arc::clone(&self.gating_sequence)
+    fn get_cursor_sequence_relaxed(&self) -> i64 {
+        self.cursor_sequence.get_relaxed()
+    }
+
+    fn get_cursor_sequence_acquire(&self) -> i64 {
+        self.cursor_sequence.get_acquire()
+    }
+
+    fn get_gating_sequence_relaxed(&self) -> i64 {
+        self.gating_sequence.get_relaxed()
+    }
+
+    fn get_gating_sequence_acquire(&self) -> i64 {
+        self.gating_sequence.get_relaxed()
     }
 }
 
-unsafe impl Send for OneToOneSequencer {}
-
-unsafe impl Sync for OneToOneSequencer {}
-
-pub struct ManyToOneSequencer {
+pub struct MultiProducer {
     buffer_size: i64,
     cached: Sequence,
-    cursor_sequence: Arc<Sequence>,
-    gating_sequence: Arc<Sequence>,
+    cursor_sequence: Sequence,
+    gating_sequence: Sequence,
     availability_buffer: AvailabilityBuffer,
 }
 
-impl ManyToOneSequencer {
-    pub fn new(buffer_size: usize) -> Self {
+unsafe impl Send for MultiProducer {}
+
+unsafe impl Sync for MultiProducer {}
+
+impl Sequencer for MultiProducer {
+    fn new(buffer_size: usize) -> Self {
         Self {
-            buffer_size: buffer_size as i64,
+            buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
             cached: Sequence::default(),
-            cursor_sequence: Arc::new(Sequence::default()),
-            gating_sequence: Arc::new(Sequence::default()),
+            cursor_sequence: Sequence::default(),
+            gating_sequence: Sequence::default(),
             availability_buffer: AvailabilityBuffer::new(buffer_size),
         }
     }
-}
 
-impl Sequencer for ManyToOneSequencer {
     fn next_n(&self, n: i32) -> i64 {
         let n: i64 = n as i64;
-        let next: i64 = self.cursor_sequence.get_and_add_volatile(n) + n;
+        let next: i64 = self.cursor_sequence.fetch_add_volatile(n) + n;
         let wrap_point: i64 = next - self.buffer_size;
 
-        if wrap_point > self.cached.get_plain() {
-            self.cached.set_plain(self.wait(&self.gating_sequence, wrap_point));
+        if wrap_point > self.cached.get_relaxed() {
+            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point));
         }
 
         next
     }
 
-    fn publish(&self, sequence: i64) {
+    fn publish_cursor_sequence(&self, sequence: i64) {
         self.availability_buffer.set(sequence);
     }
 
-    fn publish_range(&self, low: i64, high: i64) {
+    fn publish_cursor_sequence_range(&self, low: i64, high: i64) {
         self.availability_buffer.set_range(low, high);
     }
 
-    fn get_highest(&self, next: i64, available: i64) -> i64 {
-        self.availability_buffer.get_available(next, available)
+    fn publish_gating_sequence(&self, sequence: i64) {
+        self.gating_sequence.set_release(sequence);
     }
 
-    fn get_cursor_sequence(&self) -> Arc<Sequence> {
-        Arc::clone(&self.cursor_sequence)
+    fn get_highest(&self, low: i64, high: i64) -> i64 {
+        self.availability_buffer.get_available(low, high)
     }
 
-    fn get_gating_sequence(&self) -> Arc<Sequence> {
-        Arc::clone(&self.gating_sequence)
+    fn get_cursor_sequence_relaxed(&self) -> i64 {
+        self.cursor_sequence.get_relaxed()
+    }
+
+    fn get_cursor_sequence_acquire(&self) -> i64 {
+        self.cursor_sequence.get_acquire()
+    }
+
+    fn get_gating_sequence_relaxed(&self) -> i64 {
+        self.gating_sequence.get_relaxed()
+    }
+
+    fn get_gating_sequence_acquire(&self) -> i64 {
+        self.gating_sequence.get_acquire()
     }
 }
-
-unsafe impl Send for ManyToOneSequencer {}
-
-unsafe impl Sync for ManyToOneSequencer {}

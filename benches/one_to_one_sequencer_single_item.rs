@@ -1,17 +1,16 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::Arc;
+use workers_core_rust::poller::SingleConsumer;
 use workers_core_rust::ring_buffer::RingBuffer;
-use workers_core_rust::sequencer::SequencerType;
+use workers_core_rust::sequencer::SingleProducer;
 use workers_core_rust::worker_th::*;
 
 #[derive(Copy, Clone)]
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let ring_buffer = Arc::new(RingBuffer::<Event>::new(8192, SequencerType::SingleProducer, ));
-    let worker_thread = WorkerThread::new(Arc::clone(&ring_buffer), move |e| {
-        std::hint::black_box(e);
-    });
+    let ring_buffer = Arc::new(RingBuffer::<Event, SingleProducer, SingleConsumer>::new(8192));
+    let worker_thread = WorkerThread::new(Arc::clone(&ring_buffer));
 
     let mut group = c.benchmark_group("one_to_one_sequencer_single");
     group.throughput(Throughput::Elements(1));

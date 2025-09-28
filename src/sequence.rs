@@ -15,12 +15,12 @@ impl Sequence {
     }
 
     #[inline(always)]
-    pub fn get_plain(&self) -> i64 {
+    pub fn get_relaxed(&self) -> i64 {
         self.sequence.load(Ordering::Relaxed)
     }
 
     #[inline(always)]
-    pub fn set_plain(&self, value: i64) {
+    pub fn set_relaxed(&self, value: i64) {
         self.sequence.store(value, Ordering::Relaxed);
     }
 
@@ -35,7 +35,7 @@ impl Sequence {
     }
 
     #[inline(always)]
-    pub fn get_and_add_volatile(&self, value: i64) -> i64 {
+    pub fn fetch_add_volatile(&self, value: i64) -> i64 {
         self.sequence.fetch_add(value, Ordering::AcqRel)
     }
 }

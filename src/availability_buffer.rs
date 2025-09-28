@@ -12,7 +12,7 @@ impl AvailabilityBuffer {
     pub fn new(buffer_size: usize) -> Self {
         Self {
             mask: (buffer_size - 1) as i64,
-            flag_shift: utils::log2(buffer_size) as usize,
+            flag_shift: buffer_size.ilog2() as usize,
             buffer: Self::init_buffer(buffer_size),
         }
     }

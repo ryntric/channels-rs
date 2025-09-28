@@ -10,10 +10,6 @@ pub fn assert_buffer_size_pow_of_2(buffer_size: usize) -> usize {
     buffer_size
 }
 
-pub fn log2(buffer_size: usize) -> u32 {
-    (usize::BITS - 1) - buffer_size.leading_zeros()
-}
-
 pub fn compare_and_exchange_bool(value: &AtomicBool, current: bool, new: bool, success: Ordering, failure: Ordering) -> bool {
     value.compare_exchange(current, new, success, failure)
         .is_ok()

@@ -1,8 +1,8 @@
-pub mod availability_buffer;
-pub mod constants;
-pub mod event_poller;
+pub(crate) mod availability_buffer;
+pub(crate) mod constants;
+pub(crate) mod sequence;
+pub(crate) mod utils;
+pub mod poller;
 pub mod ring_buffer;
-pub mod sequence;
 pub mod sequencer;
-pub mod utils;
 pub mod worker_th;

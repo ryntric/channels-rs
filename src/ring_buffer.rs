@@ -1,21 +1,35 @@
-use crate::sequencer::{ManyToOneSequencer, OneToOneSequencer, Sequencer, SequencerType};
+use crate::poller::{PollState, Poller};
+use crate::sequencer::Sequencer;
 use crate::{constants, utils};
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::Arc;
 
-pub struct RingBuffer<T> {
+pub struct RingBuffer<T, S, P>
+where
+    S: Sequencer,
+    P: Poller<T, S>,
+{
     buffer: Box<[UnsafeCell<MaybeUninit<T>>]>,
-    sequencer: Arc<dyn Sequencer>,
+    sequencer: S,
+    poller: P,
     mask: i64,
 }
 
-impl<T> RingBuffer<T> {
-    pub fn new(buffer_size: usize, sequencer_type: SequencerType) -> RingBuffer<T> {
+unsafe impl<T, S, P> Sync for RingBuffer<T, S, P> where S: Sequencer, P: Poller<T, S> {}
+
+unsafe impl<T, S, P> Send for RingBuffer<T, S, P> where S: Sequencer, P: Poller<T, S> {}
+
+impl<T, S, P> RingBuffer<T, S, P>
+where
+    S: Sequencer,
+    P: Poller<T, S>,
+{
+    pub fn new(buffer_size: usize) -> RingBuffer<T, S, P> {
         RingBuffer {
             buffer: Self::create_buffer(buffer_size),
-            sequencer: Self::create_sequencer(buffer_size, sequencer_type),
+            sequencer: S::new(buffer_size),
+            poller: P::new(),
             mask: (buffer_size - 1) as i64,
         }
     }
@@ -27,21 +41,14 @@ impl<T> RingBuffer<T> {
             .into_boxed_slice()
     }
 
-    fn create_sequencer(buffer_size: usize, sequencer_type: SequencerType) -> Arc<dyn Sequencer> {
-        match sequencer_type {
-            SequencerType::SingleProducer => Arc::new(OneToOneSequencer::new(buffer_size)),
-            SequencerType::MultiProducer => Arc::new(ManyToOneSequencer::new(buffer_size)),
-        }
-    }
-
-    pub fn poll(&self, sequence: i64) -> T {
+    pub(crate) fn dequeue(&self, sequence: i64) -> T {
         let index: usize = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
         let cell = &self.buffer[index];
         unsafe { ptr::read((*cell.get()).as_ptr()) }
     }
 
-    pub fn get_sequencer(&self) -> Arc<dyn Sequencer> {
-        Arc::clone(&self.sequencer)
+    pub fn poll<H: Fn(T)>(&self, handler: &H) -> PollState {
+        self.poller.poll(&self.sequencer, &self, &handler)
     }
 
     pub fn push(&self, element: T) {
@@ -49,10 +56,6 @@ impl<T> RingBuffer<T> {
         let index: usize = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
         let cell = &self.buffer[index];
         unsafe { (*cell.get()).write(element); }
-        self.sequencer.publish(sequence);
+        self.sequencer.publish_cursor_sequence(sequence);
     }
 }
-
-unsafe impl<V: Default> Sync for RingBuffer<V> {}
-
-unsafe impl<V: Default> Send for RingBuffer<V> {}
