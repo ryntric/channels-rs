@@ -53,9 +53,26 @@ where
 
     pub fn push(&self, element: T) {
         let sequence = self.sequencer.next();
-        let index: usize = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
-        let cell = &self.buffer[index];
+        let cell = &self.buffer[utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING)];
         unsafe { (*cell.get()).write(element); }
         self.sequencer.publish_cursor_sequence(sequence);
+    }
+
+    pub fn push_n<I>(&self, items: I)
+    where
+        I: IntoIterator<Item=T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let iterator = items.into_iter();
+        let length = iterator.len() as i32;
+        let high = self.sequencer.next_n(length);
+        let low = high - (length - 1) as i64;
+
+        for (index, item) in iterator.enumerate() {
+            let cell = &self.buffer[utils::wrap_index(index as i64 + low, self.mask, constants::ARRAY_PADDING)];
+            unsafe { (*cell.get()).write(item); }
+        }
+
+        self.sequencer.publish_cursor_sequence_range(low, high);
     }
 }

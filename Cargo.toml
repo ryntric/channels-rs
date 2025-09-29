@@ -7,9 +7,9 @@ edition = "2024"
 criterion = { version = "0.7.0" }
 
 [[bench]]
-name = "one_to_one_sequencer_single_item"
+name = "one_to_one_sequencer_item_single"
 harness = false
 
 [[bench]]
-name = "one_to_one_sequencer_single_batch"
+name = "one_to_one_sequencer_item_batch"
 harness = false

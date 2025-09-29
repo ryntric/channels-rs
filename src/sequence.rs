@@ -7,6 +7,10 @@ pub struct Sequence {
     sequence: AtomicI64,
 }
 
+unsafe impl Sync for Sequence {}
+
+unsafe impl Send for Sequence {}
+
 impl Sequence {
     pub fn new(value: i64) -> Self {
         Sequence {
@@ -45,7 +49,3 @@ impl Default for Sequence {
         Sequence::new(INITIAL_VALUE)
     }
 }
-
-unsafe impl Sync for Sequence {}
-
-unsafe impl Send for Sequence {}

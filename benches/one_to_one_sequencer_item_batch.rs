@@ -1,8 +1,8 @@
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use std::sync::Arc;
 use workers_core_rust::poller::SingleConsumer;
 use workers_core_rust::ring_buffer::RingBuffer;
-use workers_core_rust::sequencer::SingleProducer;
+use workers_core_rust::sequencer::{MultiProducer, SingleProducer};
 use workers_core_rust::worker_th::*;
 
 #[derive(Copy, Clone)]
@@ -11,21 +11,19 @@ struct Event {}
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
     let ring_buffer = Arc::new(RingBuffer::<Event, SingleProducer, SingleConsumer>::new(8192));
     let worker_thread = WorkerThread::new(Arc::clone(&ring_buffer));
-    
-    let events = vec![Event {},Event {},Event {},Event {},Event {},Event {},Event {},Event {}];
+    worker_thread.start();
 
-    let mut group = c.benchmark_group("one_to_one_sequencer_single_item");
+    let mut group = c.benchmark_group("push batch");
     group.throughput(Throughput::Elements(8));
-    group.bench_function("single-thread offer/poll", |b| {
-        worker_thread.start();
+    group.bench_function("push_n", |b| {
 
         let event: Event = Event {};
 
-        b.iter(|| {
-            for event in events.iter() {
-                ring_buffer.push(*event);   
-            }
-        });
+        b.iter_batched(|| {
+            vec![Event {},Event {},Event {},Event {},Event {},Event {},Event {},Event {}]
+        },|events|{
+            ring_buffer.push_n(events)
+        }, BatchSize::LargeInput);
     });
 
     worker_thread.stop();

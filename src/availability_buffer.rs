@@ -8,6 +8,10 @@ pub struct AvailabilityBuffer {
     buffer: Box<[AtomicI32]>,
 }
 
+unsafe impl Sync for AvailabilityBuffer {}
+
+unsafe impl Send for AvailabilityBuffer {}
+
 impl AvailabilityBuffer {
     pub fn new(buffer_size: usize) -> Self {
         Self {
