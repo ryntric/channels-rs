@@ -5,31 +5,19 @@ use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
 use std::ptr;
 
-pub struct RingBuffer<T, S, P>
-where
-    S: Sequencer,
-    P: Poller<T, S>,
-{
+pub(crate) struct RingBuffer<T> {
     buffer: Box<[UnsafeCell<MaybeUninit<T>>]>,
-    sequencer: S,
-    poller: P,
+    sequencer: Box<dyn Sequencer>,
+    poller: Box<dyn Poller<T>>,
     mask: i64,
 }
 
-unsafe impl<T, S, P> Sync for RingBuffer<T, S, P> where S: Sequencer, P: Poller<T, S> {}
-
-unsafe impl<T, S, P> Send for RingBuffer<T, S, P> where S: Sequencer, P: Poller<T, S> {}
-
-impl<T, S, P> RingBuffer<T, S, P>
-where
-    S: Sequencer,
-    P: Poller<T, S>,
-{
-    pub fn new(buffer_size: usize) -> RingBuffer<T, S, P> {
+impl<T> RingBuffer<T> {
+    pub fn new(buffer_size: usize, sequencer: Box<dyn Sequencer>, poller: Box<dyn Poller<T>>) -> RingBuffer<T> {
         RingBuffer {
             buffer: Self::create_buffer(buffer_size),
-            sequencer: S::new(buffer_size),
-            poller: P::new(),
+            sequencer: sequencer,
+            poller: poller,
             mask: (buffer_size - 1) as i64,
         }
     }
@@ -48,7 +36,7 @@ where
     }
 
     pub fn poll<H: Fn(T)>(&self, handler: &H) -> PollState {
-        self.poller.poll(&self.sequencer, &self, &handler)
+        self.poller.poll(&*self.sequencer, &self, &handler)
     }
 
     pub fn push(&self, element: T) {
@@ -64,7 +52,7 @@ where
         I::IntoIter: ExactSizeIterator,
     {
         let iterator = items.into_iter();
-        let length = iterator.len() as i32;
+        let length = iterator.len();
         let high = self.sequencer.next_n(length);
         let low = high - (length - 1) as i64;
 
@@ -76,3 +64,7 @@ where
         self.sequencer.publish_cursor_sequence_range(low, high);
     }
 }
+
+unsafe impl<T> Sync for RingBuffer<T> {}
+
+unsafe impl<T> Send for RingBuffer<T> {}

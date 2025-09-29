@@ -1,35 +1,32 @@
+use crate::channel::Sender;
 use crate::ring_buffer::RingBuffer;
 use crate::sequencer::Sequencer;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PollState {
-    Empty,
-    Ready,
+    Idle,
+    Processing,
 }
 
-pub(crate) trait Poller<T, S: Sequencer>: Send + Sync + Sized {
-    fn new() -> Self;
-
-    fn poll<H: Fn(T)>(&self, sequencer: &S, buffer: &RingBuffer<T, S, Self>, handler: &H) -> PollState;
+pub(crate) trait Poller<T>: Send + Sync {
+    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> PollState;
 }
 
-pub struct SingleConsumer;
+pub(crate) struct SinglePoller;
 
-unsafe impl Send for SingleConsumer {}
-
-unsafe impl Sync for SingleConsumer {}
-
-impl<T, S: Sequencer> Poller<T, S> for SingleConsumer {
-    fn new() -> Self {
-        Self {}
+impl SinglePoller {
+    pub fn new() -> SinglePoller {
+        Self
     }
+}
 
-    fn poll<H: Fn(T)>(&self, sequencer: &S, buffer: &RingBuffer<T, S, Self>, handler: &H) -> PollState {
+impl<T> Poller<T> for SinglePoller {
+    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> PollState {
         let next: i64 = sequencer.get_gating_sequence_relaxed() + 1;
         let available: i64 = sequencer.get_cursor_sequence_acquire();
 
         if next > available {
-            return PollState::Empty;
+            return PollState::Idle;
         }
 
         let highest: i64 = sequencer.get_highest(next, available);
@@ -38,6 +35,10 @@ impl<T, S: Sequencer> Poller<T, S> for SingleConsumer {
         }
 
         sequencer.publish_gating_sequence(highest);
-        PollState::Ready
+        PollState::Processing
     }
 }
+
+unsafe impl Send for SinglePoller {}
+
+unsafe impl Sync for SinglePoller {}

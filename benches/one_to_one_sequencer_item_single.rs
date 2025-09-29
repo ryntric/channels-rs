@@ -1,32 +1,41 @@
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::Arc;
-use workers_core_rust::poller::SingleConsumer;
-use workers_core_rust::ring_buffer::RingBuffer;
-use workers_core_rust::sequencer::{MultiProducer, SingleProducer};
-use workers_core_rust::worker_th::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use workers_core_rust::channel;
+use workers_core_rust::poller::PollState::Idle;
 
 #[derive(Copy, Clone)]
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let ring_buffer = Arc::new(RingBuffer::<Event, SingleProducer, SingleConsumer>::new(8192));
-    let worker_thread = WorkerThread::new(Arc::clone(&ring_buffer));
+    let (tx, rc) = channel::spsc::<Event>(8192);
+
+    let is_running = Arc::new(AtomicBool::new(true));
+    let is_running_clone = is_running.clone();
+    std::thread::spawn(move || {
+        let handler = |e| {
+            std::hint::black_box(e);
+        };
+
+        while is_running_clone.load(Ordering::Acquire) {
+            if rc.recv(&handler) == Idle {
+                std::hint::spin_loop()
+            }
+        }
+    });
 
     let event: Event = Event {};
-    
+
     let mut group = c.benchmark_group("push single");
     group.throughput(Throughput::Elements(1));
     group.bench_function("push", |b| {
-        worker_thread.start();
-        
         b.iter(|| {
-            ring_buffer.push(*&event);
+            tx.send(*&event);
         });
     });
 
-    worker_thread.stop();
+    is_running.store(false, Ordering::Release);
     group.finish();
-
 }
 
 criterion_group!(benches, bench_ring_buffer_offer_poll);

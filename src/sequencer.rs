@@ -2,14 +2,13 @@ use crate::availability_buffer::AvailabilityBuffer;
 use crate::sequence::Sequence;
 use crate::utils;
 
-pub(crate) trait Sequencer: Sync + Send {
-    fn new(buffer_size: usize) -> Self;
+pub trait Sequencer: Sync + Send {
 
     fn next(&self) -> i64 {
         self.next_n(1)
     }
 
-    fn next_n(&self, n: i32) -> i64;
+    fn next_n(&self, n: usize) -> i64;
 
     fn publish_cursor_sequence(&self, sequence: i64);
 
@@ -41,7 +40,7 @@ pub(crate) trait Sequencer: Sync + Send {
     }
 }
 
-pub struct SingleProducer {
+pub struct SingleProducerSequencer {
     sequence: Sequence,
     cached: Sequence,
     buffer_size: i64,
@@ -49,12 +48,8 @@ pub struct SingleProducer {
     gating_sequence: Sequence,
 }
 
-unsafe impl Send for SingleProducer {}
-
-unsafe impl Sync for SingleProducer {}
-
-impl Sequencer for SingleProducer {
-    fn new(buffer_size: usize) -> Self {
+impl SingleProducerSequencer {
+    pub fn new(buffer_size: usize) -> Self {
         Self {
             sequence: Sequence::default(),
             cached: Sequence::default(),
@@ -63,8 +58,10 @@ impl Sequencer for SingleProducer {
             gating_sequence: Sequence::default(),
         }
     }
+}
 
-    fn next_n(&self, n: i32) -> i64 {
+impl Sequencer for SingleProducerSequencer {
+    fn next_n(&self, n: usize) -> i64 {
         let next: i64 = self.sequence.get_relaxed() + n as i64;
         let wrap_point: i64 = next - self.buffer_size;
 
@@ -109,7 +106,7 @@ impl Sequencer for SingleProducer {
     }
 }
 
-pub struct MultiProducer {
+pub struct MultiProducerSequencer {
     buffer_size: i64,
     cached: Sequence,
     cursor_sequence: Sequence,
@@ -117,12 +114,8 @@ pub struct MultiProducer {
     availability_buffer: AvailabilityBuffer,
 }
 
-unsafe impl Send for MultiProducer {}
-
-unsafe impl Sync for MultiProducer {}
-
-impl Sequencer for MultiProducer {
-    fn new(buffer_size: usize) -> Self {
+impl MultiProducerSequencer {
+    pub fn new(buffer_size: usize) -> Self {
         Self {
             buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
             cached: Sequence::default(),
@@ -131,8 +124,11 @@ impl Sequencer for MultiProducer {
             availability_buffer: AvailabilityBuffer::new(buffer_size),
         }
     }
+}
 
-    fn next_n(&self, n: i32) -> i64 {
+impl Sequencer for MultiProducerSequencer {
+
+    fn next_n(&self, n: usize) -> i64 {
         let n: i64 = n as i64;
         let next: i64 = self.cursor_sequence.fetch_add_volatile(n) + n;
         let wrap_point: i64 = next - self.buffer_size;
@@ -176,3 +172,12 @@ impl Sequencer for MultiProducer {
         self.gating_sequence.get_acquire()
     }
 }
+
+
+unsafe impl Send for SingleProducerSequencer {}
+
+unsafe impl Sync for SingleProducerSequencer {}
+
+unsafe impl Send for MultiProducerSequencer {}
+
+unsafe impl Sync for MultiProducerSequencer {}
