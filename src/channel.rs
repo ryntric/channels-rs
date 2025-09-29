@@ -1,4 +1,4 @@
-use crate::poller::{PollState, Poller, SinglePoller};
+use crate::poller::{Poller, SinglePoller, State};
 use crate::ring_buffer::RingBuffer;
 use crate::sequencer::{MultiProducerSequencer, SingleProducerSequencer};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub struct Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    pub fn recv<H>(&self, handler: &H) -> PollState
+    pub fn recv<H>(&self, handler: &H) -> State
     where
         H: Fn(T),
     {

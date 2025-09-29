@@ -1,15 +1,14 @@
-use crate::channel::Sender;
 use crate::ring_buffer::RingBuffer;
 use crate::sequencer::Sequencer;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum PollState {
+pub enum State {
     Idle,
     Processing,
 }
 
 pub(crate) trait Poller<T>: Send + Sync {
-    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> PollState;
+    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> State;
 }
 
 pub(crate) struct SinglePoller;
@@ -21,12 +20,12 @@ impl SinglePoller {
 }
 
 impl<T> Poller<T> for SinglePoller {
-    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> PollState {
+    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> State {
         let next: i64 = sequencer.get_gating_sequence_relaxed() + 1;
         let available: i64 = sequencer.get_cursor_sequence_acquire();
 
         if next > available {
-            return PollState::Idle;
+            return State::Idle;
         }
 
         let highest: i64 = sequencer.get_highest(next, available);
@@ -35,7 +34,7 @@ impl<T> Poller<T> for SinglePoller {
         }
 
         sequencer.publish_gating_sequence(highest);
-        PollState::Processing
+        State::Processing
     }
 }
 

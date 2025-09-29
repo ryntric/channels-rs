@@ -1,24 +1,24 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use workers_core_rust::channel;
-use workers_core_rust::poller::PollState::Idle;
+use workers_core_rust::poller::State::Idle;
 
 #[derive(Copy, Clone)]
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rc) = channel::spsc::<Event>(8192);
-
+    let (tx, rx) = channel::spsc::<Event>(8192);
+    
     let is_running = Arc::new(AtomicBool::new(true));
     let is_running_clone = is_running.clone();
     std::thread::spawn(move || {
         let handler = |e| {
             std::hint::black_box(e);
         };
-
+        
         while is_running_clone.load(Ordering::Acquire) {
-            if rc.recv(&handler) == Idle {
+            if rx.recv(&handler) == Idle {
                 std::hint::spin_loop()
             }
         }
@@ -37,7 +37,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
             tx.send_n(events)
         }, BatchSize::LargeInput);
     });
-
+    
     is_running.store(false, Ordering::Release);
     group.finish();
 

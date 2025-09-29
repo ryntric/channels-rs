@@ -2,13 +2,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use workers_core_rust::channel;
-use workers_core_rust::poller::PollState::Idle;
+use workers_core_rust::poller::State::Idle;
 
 #[derive(Copy, Clone)]
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rc) = channel::spsc::<Event>(8192);
+    let (tx, rx) = channel::spsc::<Event>(8192);
 
     let is_running = Arc::new(AtomicBool::new(true));
     let is_running_clone = is_running.clone();
@@ -18,7 +18,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
         };
 
         while is_running_clone.load(Ordering::Acquire) {
-            if rc.recv(&handler) == Idle {
+            if rx.recv(&handler) == Idle {
                 std::hint::spin_loop()
             }
         }

@@ -1,4 +1,4 @@
-use crate::poller::{PollState, Poller};
+use crate::poller::{Poller, State};
 use crate::sequencer::Sequencer;
 use crate::{constants, utils};
 use std::cell::UnsafeCell;
@@ -35,7 +35,7 @@ impl<T> RingBuffer<T> {
         unsafe { ptr::read((*cell.get()).as_ptr()) }
     }
 
-    pub fn poll<H: Fn(T)>(&self, handler: &H) -> PollState {
+    pub fn poll<H: Fn(T)>(&self, handler: &H) -> State {
         self.poller.poll(&*self.sequencer, &self, &handler)
     }
 
