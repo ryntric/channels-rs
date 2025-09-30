@@ -1,7 +1,6 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 use wait_strategy::WaitStrategy;
 use workers_core_rust::{channel, wait_strategy};
 

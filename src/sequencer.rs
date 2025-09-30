@@ -10,7 +10,10 @@ pub enum SequencerKind {
 
 impl SequencerKind {
     pub fn next(&self, strategy: &WaitStrategy) -> i64 {
-        self.next_n(1, strategy)
+        match self {
+            SequencerKind::SingleProducer(sequencer) => sequencer.next(strategy),
+            SequencerKind::MultiProducer(sequencer) => sequencer.next(strategy),
+        }
     }
 
     pub fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
@@ -61,20 +64,6 @@ impl SequencerKind {
             SequencerKind::MultiProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
         }
     }
-
-    pub fn get_gating_sequence_acquire(&self) -> i64 {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
-            SequencerKind::MultiProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
-        }
-    }
-
-    pub fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: &WaitStrategy) -> i64 {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
-            SequencerKind::MultiProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
-        }
-    }
 }
 
 pub trait Sequencer: Sync + Send {
@@ -95,8 +84,6 @@ pub trait Sequencer: Sync + Send {
     fn get_cursor_sequence_acquire(&self) -> i64;
 
     fn get_gating_sequence_relaxed(&self) -> i64;
-
-    fn get_gating_sequence_acquire(&self) -> i64;
 
     #[inline(always)]
     fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: &WaitStrategy) -> i64 {
@@ -169,9 +156,6 @@ impl Sequencer for SingleProducerSequencer {
         self.gating_sequence.get_relaxed()
     }
 
-    fn get_gating_sequence_acquire(&self) -> i64 {
-        self.gating_sequence.get_relaxed()
-    }
 }
 
 pub struct MultiProducerSequencer {
@@ -231,9 +215,6 @@ impl Sequencer for MultiProducerSequencer {
         self.gating_sequence.get_relaxed()
     }
 
-    fn get_gating_sequence_acquire(&self) -> i64 {
-        self.gating_sequence.get_acquire()
-    }
 }
 
 unsafe impl Send for SingleProducerSequencer {}

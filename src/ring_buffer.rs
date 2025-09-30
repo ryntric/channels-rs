@@ -1,5 +1,5 @@
-use crate::poller::{Poller, PollerKind, State};
-use crate::sequencer::{Sequencer, SequencerKind};
+use crate::poller::{PollerKind, State};
+use crate::sequencer::SequencerKind;
 use crate::wait_strategy::WaitStrategy;
 use crate::{constants, utils};
 use std::cell::UnsafeCell;

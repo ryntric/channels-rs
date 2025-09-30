@@ -1,9 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
-use workers_core_rust::wait_strategy::WaitStrategy;
 use workers_core_rust::channel;
+use workers_core_rust::wait_strategy::WaitStrategy;
 
 #[derive(Copy, Clone)]
 struct Event {}
