@@ -1,14 +1,13 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use workers_core_rust::channel;
-use workers_core_rust::wait_strategy::WaitStrategy;
+use workers_core_rust::prelude::*;
 
 #[derive(Copy, Clone)]
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rx) = channel::spmc::<Event>(8192,  WaitStrategy::Yielding, WaitStrategy::Yielding);
+    let (tx, rx) = spmc::<Event>(8192,  WaitStrategy::Yielding, WaitStrategy::Yielding);
     let is_running = Arc::new(AtomicBool::new(true));
 
     for _ in 0..4 {
