@@ -9,22 +9,27 @@ Example of usage
 
 ```rust
 #[derive(Default, Debug)]
-struct TestEvent {
-    pub id: i64,
-    pub name: String,
-}
+struct Event {}
+
 fn main() {
-    let ring_buffer: Arc<RingBuffer<TestEvent>> = Arc::new(RingBuffer::new(8192, SequencerType::SingleProducer));
+    let (tx, rx) = channel::spsc::<Event>(8192);
 
-    let handler: fn(TestEvent) = |event: TestEvent| {
-        println!("{:?}", event);
-    };
+    let is_running = Arc::new(AtomicBool::new(true));
+    let is_running_clone = is_running.clone();
+    std::thread::spawn(move || {
+        let handler = |e| {
+            std::hint::black_box(e);
+        };
 
-    let worker: WorkerThread<TestEvent, fn(TestEvent)> = WorkerThread::new(Arc::clone(&ring_buffer), handler);
-    worker.start();
-
-    for i in 0..1000_000_000i64 {
-        ring_buffer.push(TestEvent {id: i, name: i.to_string()});
+        while is_running_clone.load(Ordering::Acquire) {
+            if rx.recv(&handler) == Idle {
+                std::hint::spin_loop()
+            }
+        }
+    });
+    
+    for i in 0..1_000_000 {
+        tx.send_n(Event{})
     }
 }
 ```

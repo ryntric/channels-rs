@@ -1,5 +1,6 @@
-use crate::poller::{Poller, State};
+use crate::poller::{Poller, PollerKind, State};
 use crate::sequencer::Sequencer;
+use crate::wait_strategy::WaitStrategy;
 use crate::{constants, utils};
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
@@ -8,12 +9,12 @@ use std::ptr;
 pub(crate) struct RingBuffer<T> {
     buffer: Box<[UnsafeCell<MaybeUninit<T>>]>,
     sequencer: Box<dyn Sequencer>,
-    poller: Box<dyn Poller<T>>,
+    poller: PollerKind,
     mask: i64,
 }
 
 impl<T> RingBuffer<T> {
-    pub fn new(buffer_size: usize, sequencer: Box<dyn Sequencer>, poller: Box<dyn Poller<T>>) -> RingBuffer<T> {
+    pub fn new(buffer_size: usize, sequencer: Box<dyn Sequencer>, poller: PollerKind) -> RingBuffer<T> {
         RingBuffer {
             buffer: Self::create_buffer(buffer_size),
             sequencer: sequencer,
@@ -39,21 +40,21 @@ impl<T> RingBuffer<T> {
         self.poller.poll(&*self.sequencer, &self, &handler)
     }
 
-    pub fn push(&self, element: T) {
-        let sequence = self.sequencer.next();
+    pub fn push(&self, element: T, strategy: WaitStrategy) {
+        let sequence = self.sequencer.next(strategy);
         let cell = &self.buffer[utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING)];
         unsafe { (*cell.get()).write(element); }
         self.sequencer.publish_cursor_sequence(sequence);
     }
 
-    pub fn push_n<I>(&self, items: I)
+    pub fn push_n<I>(&self, items: I, strategy: WaitStrategy)
     where
         I: IntoIterator<Item=T>,
         I::IntoIter: ExactSizeIterator,
     {
         let iterator = items.into_iter();
         let length = iterator.len();
-        let high = self.sequencer.next_n(length);
+        let high = self.sequencer.next_n(length, strategy);
         let low = high - (length - 1) as i64;
 
         for (index, item) in iterator.enumerate() {

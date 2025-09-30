@@ -1,14 +1,99 @@
 use crate::availability_buffer::AvailabilityBuffer;
 use crate::sequence::Sequence;
 use crate::utils;
+use crate::wait_strategy::WaitStrategy;
 
-pub trait Sequencer: Sync + Send {
+pub enum SequencerType {
+    SingleProducer(SingleProducerSequencer),
+    MultiProducer(MultiProducerSequencer),
+}
 
-    fn next(&self) -> i64 {
-        self.next_n(1)
+impl SequencerType {
+
+    #[inline(always)]
+    pub fn next(&self, strategy: WaitStrategy) -> i64 {
+        self.next_n(1, strategy)
     }
 
-    fn next_n(&self, n: usize) -> i64;
+    #[inline(always)]
+    pub fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64 {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.next_n(n, strategy),
+            SequencerType::MultiProducer(producer) => producer.next_n(n, strategy),
+        }
+    }
+
+    #[inline(always)]
+    pub fn publish_cursor_sequence(&self, sequence: i64) {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
+            SequencerType::MultiProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
+        }
+    }
+
+    #[inline(always)]
+    pub fn publish_cursor_sequence_range(&self, low: i64, high: i64) {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
+            SequencerType::MultiProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
+        }
+    }
+
+    #[inline(always)]
+    pub fn publish_gating_sequence(&self, sequence: i64) {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
+            SequencerType::MultiProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_highest(&self, low: i64, high: i64) -> i64 {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.get_highest(low, high),
+            SequencerType::MultiProducer(sequencer) => sequencer.get_highest(low, high),
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_cursor_sequence_acquire(&self) -> i64 {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
+            SequencerType::MultiProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_gating_sequence_relaxed(&self) -> i64 {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
+            SequencerType::MultiProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_gating_sequence_acquire(&self) -> i64 {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
+            SequencerType::MultiProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: WaitStrategy) -> i64 {
+        match self {
+            SequencerType::SingleProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
+            SequencerType::MultiProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
+        }
+    }
+}
+
+pub trait Sequencer: Sync + Send {
+    fn next(&self, strategy: WaitStrategy) -> i64 {
+        self.next_n(1, strategy)
+    }
+
+    fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64;
 
     fn publish_cursor_sequence(&self, sequence: i64);
 
@@ -18,8 +103,6 @@ pub trait Sequencer: Sync + Send {
 
     fn get_highest(&self, low: i64, high: i64) -> i64;
 
-    fn get_cursor_sequence_relaxed(&self) -> i64;
-
     fn get_cursor_sequence_acquire(&self) -> i64;
 
     fn get_gating_sequence_relaxed(&self) -> i64;
@@ -27,12 +110,12 @@ pub trait Sequencer: Sync + Send {
     fn get_gating_sequence_acquire(&self) -> i64;
 
     #[inline(always)]
-    fn wait(&self, gating_sequence: &Sequence, wrap_point: i64) -> i64 {
+    fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: WaitStrategy) -> i64 {
         let mut gating: i64;
         loop {
             gating = gating_sequence.get_acquire();
             if wrap_point > gating {
-                std::hint::spin_loop();
+                wait_strategy();
                 continue;
             }
             return gating;
@@ -61,12 +144,12 @@ impl SingleProducerSequencer {
 }
 
 impl Sequencer for SingleProducerSequencer {
-    fn next_n(&self, n: usize) -> i64 {
+    fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64 {
         let next: i64 = self.sequence.get_relaxed() + n as i64;
         let wrap_point: i64 = next - self.buffer_size;
 
         if wrap_point > self.cached.get_relaxed() {
-            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point));
+            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, strategy));
         }
 
         self.sequence.set_relaxed(next);
@@ -87,10 +170,6 @@ impl Sequencer for SingleProducerSequencer {
 
     fn get_highest(&self, _: i64, high: i64) -> i64 {
         high
-    }
-
-    fn get_cursor_sequence_relaxed(&self) -> i64 {
-        self.cursor_sequence.get_relaxed()
     }
 
     fn get_cursor_sequence_acquire(&self) -> i64 {
@@ -127,14 +206,13 @@ impl MultiProducerSequencer {
 }
 
 impl Sequencer for MultiProducerSequencer {
-
-    fn next_n(&self, n: usize) -> i64 {
+    fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64 {
         let n: i64 = n as i64;
         let next: i64 = self.cursor_sequence.fetch_add_volatile(n) + n;
         let wrap_point: i64 = next - self.buffer_size;
 
         if wrap_point > self.cached.get_relaxed() {
-            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point));
+            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, strategy));
         }
 
         next
@@ -156,10 +234,6 @@ impl Sequencer for MultiProducerSequencer {
         self.availability_buffer.get_available(low, high)
     }
 
-    fn get_cursor_sequence_relaxed(&self) -> i64 {
-        self.cursor_sequence.get_relaxed()
-    }
-
     fn get_cursor_sequence_acquire(&self) -> i64 {
         self.cursor_sequence.get_acquire()
     }
@@ -172,7 +246,6 @@ impl Sequencer for MultiProducerSequencer {
         self.gating_sequence.get_acquire()
     }
 }
-
 
 unsafe impl Send for SingleProducerSequencer {}
 

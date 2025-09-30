@@ -42,6 +42,18 @@ impl Sequence {
     pub fn fetch_add_volatile(&self, value: i64) -> i64 {
         self.sequence.fetch_add(value, Ordering::AcqRel)
     }
+
+    #[inline(always)]
+    pub fn compare_and_exchange_volatile(&self, current: i64, new: i64) -> bool {
+        self.sequence.compare_exchange(current, new, Ordering::AcqRel, Ordering::Relaxed)
+            .is_ok()
+    }
+
+    #[inline(always)]
+    pub fn compare_and_exchange_weak_volatile(&self, current: i64, new: i64) -> bool {
+        self.sequence.compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Relaxed)
+            .is_ok()
+    }
 }
 
 impl Default for Sequence {

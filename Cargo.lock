@@ -531,4 +531,5 @@ name = "workers-core-rust"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "log",
 ]

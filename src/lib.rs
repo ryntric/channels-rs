@@ -4,5 +4,6 @@ pub(crate) mod sequence;
 pub(crate) mod utils;
 pub(crate) mod ring_buffer;
 pub(crate) mod sequencer;
-pub mod poller;
+pub(crate) mod poller;
 pub mod channel;
+pub mod wait_strategy;
