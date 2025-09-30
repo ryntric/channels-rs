@@ -2,8 +2,18 @@ use std::time::Duration;
 
 static PARKING_TIMEOUT: Duration = Duration::from_nanos(1);
 
-pub type WaitStrategy = fn();
+pub enum WaitStrategy {
+    Parking,
+    Spinning,
+    Yielding,
+}
 
-pub static PARKING: WaitStrategy = || std::thread::park_timeout(PARKING_TIMEOUT);
-pub static SPINNING: WaitStrategy = std::hint::spin_loop;
-pub static YIELDING: WaitStrategy = std::thread::yield_now;
+impl WaitStrategy {
+    pub(crate) fn wait(&self) {
+        match self {
+            WaitStrategy::Parking => std::thread::park_timeout(PARKING_TIMEOUT),
+            WaitStrategy::Spinning => std::hint::spin_loop(),
+            WaitStrategy::Yielding => std::thread::yield_now(),
+        }
+    }
+}

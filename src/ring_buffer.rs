@@ -1,5 +1,5 @@
 use crate::poller::{Poller, PollerKind, State};
-use crate::sequencer::Sequencer;
+use crate::sequencer::{Sequencer, SequencerKind};
 use crate::wait_strategy::WaitStrategy;
 use crate::{constants, utils};
 use std::cell::UnsafeCell;
@@ -8,13 +8,13 @@ use std::ptr;
 
 pub(crate) struct RingBuffer<T> {
     buffer: Box<[UnsafeCell<MaybeUninit<T>>]>,
-    sequencer: Box<dyn Sequencer>,
+    sequencer: SequencerKind,
     poller: PollerKind,
     mask: i64,
 }
 
 impl<T> RingBuffer<T> {
-    pub fn new(buffer_size: usize, sequencer: Box<dyn Sequencer>, poller: PollerKind) -> RingBuffer<T> {
+    pub fn new(buffer_size: usize, sequencer: SequencerKind, poller: PollerKind) -> RingBuffer<T> {
         RingBuffer {
             buffer: Self::create_buffer(buffer_size),
             sequencer: sequencer,
@@ -37,7 +37,7 @@ impl<T> RingBuffer<T> {
     }
 
     pub fn poll<H: Fn(T)>(&self, handler: &H) -> State {
-        self.poller.poll(&*self.sequencer, &self, &handler)
+        self.poller.poll(&self.sequencer, &self, &handler)
     }
 
     pub fn push(&self, element: T, strategy: WaitStrategy) {

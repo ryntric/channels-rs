@@ -1,12 +1,17 @@
 use crate::poller::State::Idle;
 use crate::poller::{MultiConsumerPoller, PollerKind, SingleConsumerPoller};
 use crate::ring_buffer::RingBuffer;
-use crate::sequencer::{MultiProducerSequencer, SingleProducerSequencer};
+use crate::sequencer::{MultiProducerSequencer, SequencerKind, SingleProducerSequencer};
 use crate::wait_strategy::WaitStrategy;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct Sender<T> {
+    buffer: Arc<RingBuffer<T>>,
+}
+
+#[derive(Clone)]
+pub struct Receiver<T> {
     buffer: Arc<RingBuffer<T>>,
 }
 
@@ -24,11 +29,6 @@ impl<T> Sender<T> {
     }
 }
 
-#[derive(Clone)]
-pub struct Receiver<T> {
-    buffer: Arc<RingBuffer<T>>,
-}
-
 impl<T> Receiver<T> {
     pub fn recv<H>(&self, handler: &H)
     where
@@ -42,13 +42,13 @@ impl<T> Receiver<T> {
         H: Fn(T),
     {
         while self.buffer.poll(handler) == Idle {
-            strategy();
+            strategy.wait();
         }
     }
 }
 
 pub fn spsc<T>(buffer_size: usize) -> (Sender<T>, Receiver<T>) {
-    let sequencer = Box::new(SingleProducerSequencer::new(buffer_size));
+    let sequencer = SequencerKind::SingleProducer(SingleProducerSequencer::new(buffer_size));
     let poller = PollerKind::SingleConsumer(SingleConsumerPoller::new((buffer_size >> 4) as i64));
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
@@ -59,7 +59,7 @@ pub fn spsc<T>(buffer_size: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 pub fn mpsc<T>(buffer_size: usize) -> (Sender<T>, Receiver<T>) {
-    let sequencer = Box::new(MultiProducerSequencer::new(buffer_size));
+    let sequencer = SequencerKind::MultiProducer(MultiProducerSequencer::new(buffer_size));
     let poller = PollerKind::SingleConsumer(SingleConsumerPoller::new((buffer_size >> 4) as i64));
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
@@ -70,7 +70,7 @@ pub fn mpsc<T>(buffer_size: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 pub fn spmc<T>(buffer_size: usize) -> (Sender<T>, Receiver<T>) {
-    let sequencer = Box::new(SingleProducerSequencer::new(buffer_size));
+    let sequencer = SequencerKind::SingleProducer(SingleProducerSequencer::new(buffer_size));
     let poller = PollerKind::MultiConsumer(MultiConsumerPoller::new((buffer_size >> 4) as i64));
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
@@ -81,7 +81,7 @@ pub fn spmc<T>(buffer_size: usize) -> (Sender<T>, Receiver<T>) {
 }
 
 pub fn mpmc<T>(buffer_size: usize) -> (Sender<T>, Receiver<T>) {
-    let sequencer = Box::new(MultiProducerSequencer::new(buffer_size));
+    let sequencer = SequencerKind::MultiProducer(MultiProducerSequencer::new(buffer_size));
     let poller = PollerKind::MultiConsumer(MultiConsumerPoller::new((buffer_size >> 4) as i64));
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));

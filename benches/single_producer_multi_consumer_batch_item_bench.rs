@@ -1,6 +1,7 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use wait_strategy::WaitStrategy;
 use workers_core_rust::{channel, wait_strategy};
 
 #[derive(Copy, Clone)]
@@ -20,7 +21,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
             };
 
             while is_running_clone.load(Ordering::Acquire) {
-                rx_clone.blocking_recv(wait_strategy::SPINNING, &handler)
+                rx_clone.blocking_recv(WaitStrategy::Spinning, &handler)
             }
         });
     }
@@ -32,7 +33,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
         b.iter_batched(|| {
             vec![Event {},Event {},Event {},Event {},Event {},Event {},Event {},Event {}]
         },|events|{
-            tx.send_n(events, wait_strategy::SPINNING)
+            tx.send_n(events, WaitStrategy::Spinning)
         }, BatchSize::LargeInput);
     });
 

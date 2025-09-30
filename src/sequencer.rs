@@ -3,87 +3,76 @@ use crate::sequence::Sequence;
 use crate::utils;
 use crate::wait_strategy::WaitStrategy;
 
-pub enum SequencerType {
+pub enum SequencerKind {
     SingleProducer(SingleProducerSequencer),
     MultiProducer(MultiProducerSequencer),
 }
 
-impl SequencerType {
-
-    #[inline(always)]
+impl SequencerKind {
     pub fn next(&self, strategy: WaitStrategy) -> i64 {
         self.next_n(1, strategy)
     }
 
-    #[inline(always)]
     pub fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64 {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.next_n(n, strategy),
-            SequencerType::MultiProducer(producer) => producer.next_n(n, strategy),
+            SequencerKind::SingleProducer(sequencer) => sequencer.next_n(n, strategy),
+            SequencerKind::MultiProducer(producer) => producer.next_n(n, strategy),
         }
     }
 
-    #[inline(always)]
     pub fn publish_cursor_sequence(&self, sequence: i64) {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
-            SequencerType::MultiProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
+            SequencerKind::SingleProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
+            SequencerKind::MultiProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
         }
     }
 
-    #[inline(always)]
     pub fn publish_cursor_sequence_range(&self, low: i64, high: i64) {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
-            SequencerType::MultiProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
+            SequencerKind::SingleProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
+            SequencerKind::MultiProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
         }
     }
 
-    #[inline(always)]
     pub fn publish_gating_sequence(&self, sequence: i64) {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
-            SequencerType::MultiProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
+            SequencerKind::SingleProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
+            SequencerKind::MultiProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
         }
     }
 
-    #[inline(always)]
     pub fn get_highest(&self, low: i64, high: i64) -> i64 {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.get_highest(low, high),
-            SequencerType::MultiProducer(sequencer) => sequencer.get_highest(low, high),
+            SequencerKind::SingleProducer(sequencer) => sequencer.get_highest(low, high),
+            SequencerKind::MultiProducer(sequencer) => sequencer.get_highest(low, high),
         }
     }
 
-    #[inline(always)]
     pub fn get_cursor_sequence_acquire(&self) -> i64 {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
-            SequencerType::MultiProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
+            SequencerKind::SingleProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
+            SequencerKind::MultiProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
         }
     }
 
-    #[inline(always)]
     pub fn get_gating_sequence_relaxed(&self) -> i64 {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
-            SequencerType::MultiProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
+            SequencerKind::SingleProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
+            SequencerKind::MultiProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
         }
     }
 
-    #[inline(always)]
     pub fn get_gating_sequence_acquire(&self) -> i64 {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
-            SequencerType::MultiProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
+            SequencerKind::SingleProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
+            SequencerKind::MultiProducer(sequencer) => sequencer.get_gating_sequence_acquire(),
         }
     }
 
-    #[inline(always)]
     pub fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: WaitStrategy) -> i64 {
         match self {
-            SequencerType::SingleProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
-            SequencerType::MultiProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
+            SequencerKind::SingleProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
+            SequencerKind::MultiProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
         }
     }
 }
@@ -115,7 +104,7 @@ pub trait Sequencer: Sync + Send {
         loop {
             gating = gating_sequence.get_acquire();
             if wrap_point > gating {
-                wait_strategy();
+                wait_strategy.wait();
                 continue;
             }
             return gating;

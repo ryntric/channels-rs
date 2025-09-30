@@ -2,6 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use workers_core_rust::{channel, wait_strategy};
+use workers_core_rust::wait_strategy::WaitStrategy;
 
 #[derive(Copy, Clone)]
 struct Event {}
@@ -20,7 +21,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
             };
 
             while is_running_clone.load(Ordering::Acquire) {
-                rx_clone.blocking_recv(wait_strategy::SPINNING, &handler)
+                rx_clone.blocking_recv(WaitStrategy::Spinning, &handler)
             }
         });
     }
@@ -32,7 +33,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("push", |b| {
         b.iter(|| {
-            tx.send(*&event, wait_strategy::SPINNING);
+            tx.send(*&event, WaitStrategy::Spinning);
         });
     });
 

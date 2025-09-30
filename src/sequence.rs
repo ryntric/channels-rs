@@ -18,40 +18,35 @@ impl Sequence {
         }
     }
 
-    #[inline(always)]
     pub fn get_relaxed(&self) -> i64 {
         self.sequence.load(Ordering::Relaxed)
     }
 
-    #[inline(always)]
     pub fn set_relaxed(&self, value: i64) {
         self.sequence.store(value, Ordering::Relaxed);
     }
 
-    #[inline(always)]
     pub fn get_acquire(&self) -> i64 {
         self.sequence.load(Ordering::Acquire)
     }
 
-    #[inline(always)]
     pub fn set_release(&self, value: i64) {
         self.sequence.store(value, Ordering::Release);
     }
 
-    #[inline(always)]
     pub fn fetch_add_volatile(&self, value: i64) -> i64 {
         self.sequence.fetch_add(value, Ordering::AcqRel)
     }
 
-    #[inline(always)]
     pub fn compare_and_exchange_volatile(&self, current: i64, new: i64) -> bool {
-        self.sequence.compare_exchange(current, new, Ordering::AcqRel, Ordering::Relaxed)
+        self.sequence
+            .compare_exchange(current, new, Ordering::AcqRel, Ordering::Relaxed)
             .is_ok()
     }
 
-    #[inline(always)]
     pub fn compare_and_exchange_weak_volatile(&self, current: i64, new: i64) -> bool {
-        self.sequence.compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Relaxed)
+        self.sequence
+            .compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Relaxed)
             .is_ok()
     }
 }

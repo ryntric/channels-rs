@@ -33,8 +33,7 @@ impl AvailabilityBuffer {
     fn calculate_flag(&self, sequence: i64) -> i32 {
         (sequence >> self.flag_shift) as i32
     }
-
-    #[inline(always)]
+    
     pub fn get_available(&self, low: i64, high: i64) -> i64 {
         fence(Ordering::Acquire);
         for sequence in low..=high {
