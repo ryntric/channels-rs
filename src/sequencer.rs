@@ -16,7 +16,7 @@ impl SequencerKind {
     pub fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
         match self {
             SequencerKind::SingleProducer(sequencer) => sequencer.next_n(n, strategy),
-            SequencerKind::MultiProducer(producer) => producer.next_n(n, strategy),
+            SequencerKind::MultiProducer(sequencer) => sequencer.next_n(n, strategy),
         }
     }
 
