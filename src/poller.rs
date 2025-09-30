@@ -1,10 +1,6 @@
 use crate::ring_buffer::RingBuffer;
 use crate::sequence::Sequence;
-use crate::sequencer::SequencerKind;
-
-fn get_available(available: i64, batch_size: i64) -> i64 {
-    if available > batch_size { batch_size } else { available }
-}
+use crate::sequencer::Sequencer;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum State {
@@ -12,39 +8,23 @@ pub enum State {
     Processing,
 }
 
-pub enum PollerKind {
-    SingleConsumer(SingleConsumerPoller),
-    MultiConsumer(MultiConsumerPoller),
+pub(crate) trait Poller<T>: Send + Sync {
+    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, batch_size: i64, handler: &dyn Fn(T)) -> State;
 }
 
-impl PollerKind {
-    pub fn poll<T>(&self, sequencer: &SequencerKind, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> State {
-        match self {
-            PollerKind::SingleConsumer(poller) => poller.poll(sequencer, buffer, handler),
-            PollerKind::MultiConsumer(poller) => poller.poll(sequencer, buffer, handler),
-        }
-    }
-}
-
-pub trait Poller<T>: Send + Sync {
-    fn poll(&self, sequencer: &SequencerKind, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> State;
-}
-
-pub struct SingleConsumerPoller {
-    batch_size: i64,
-}
+pub(crate) struct SingleConsumerPoller {}
 
 impl SingleConsumerPoller {
-    pub fn new(batch_size: i64) -> SingleConsumerPoller {
-        Self { batch_size }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
 impl<T> Poller<T> for SingleConsumerPoller {
-    fn poll(&self, sequencer: &SequencerKind, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> State {
+    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, batch_size: i64, handler: &dyn Fn(T)) -> State {
         let current = sequencer.get_gating_sequence_relaxed();
         let next: i64 = current + 1;
-        let available: i64 = get_available(sequencer.get_cursor_sequence_acquire(), current + self.batch_size);
+        let available: i64 = std::cmp::min(sequencer.get_cursor_sequence_acquire(), current + batch_size);
 
         if next > available {
             return State::Idle;
@@ -62,20 +42,18 @@ impl<T> Poller<T> for SingleConsumerPoller {
 
 pub(crate) struct MultiConsumerPoller {
     sequence: Sequence,
-    batch_size: i64,
 }
 
 impl MultiConsumerPoller {
-    pub fn new(batch_size: i64) -> Self {
+    pub fn new() -> Self {
         Self {
             sequence: Sequence::default(),
-            batch_size,
         }
     }
 }
 
 impl<T> Poller<T> for MultiConsumerPoller {
-    fn poll(&self, sequencer: &SequencerKind, buffer: &RingBuffer<T>, handler: &dyn Fn(T)) -> State {
+    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, batch_size: i64, handler: &dyn Fn(T)) -> State {
         let mut current: i64;
         let mut next: i64;
         let mut available: i64;
@@ -84,7 +62,7 @@ impl<T> Poller<T> for MultiConsumerPoller {
         loop {
             current = self.sequence.get_acquire();
             next = current + 1;
-            available = get_available(sequencer.get_cursor_sequence_acquire(), current + self.batch_size);
+            available = std::cmp::min(sequencer.get_cursor_sequence_acquire(), current + batch_size);
 
             if next > available {
                 return State::Idle;

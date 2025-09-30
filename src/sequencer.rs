@@ -3,69 +3,6 @@ use crate::sequence::Sequence;
 use crate::utils;
 use crate::wait_strategy::WaitStrategy;
 
-pub enum SequencerKind {
-    SingleProducer(SingleProducerSequencer),
-    MultiProducer(MultiProducerSequencer),
-}
-
-impl SequencerKind {
-    pub fn next(&self, strategy: &WaitStrategy) -> i64 {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.next(strategy),
-            SequencerKind::MultiProducer(sequencer) => sequencer.next(strategy),
-        }
-    }
-
-    pub fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.next_n(n, strategy),
-            SequencerKind::MultiProducer(sequencer) => sequencer.next_n(n, strategy),
-        }
-    }
-
-    pub fn publish_cursor_sequence(&self, sequence: i64) {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
-            SequencerKind::MultiProducer(sequencer) => sequencer.publish_cursor_sequence(sequence),
-        }
-    }
-
-    pub fn publish_cursor_sequence_range(&self, low: i64, high: i64) {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
-            SequencerKind::MultiProducer(sequencer) => sequencer.publish_cursor_sequence_range(low, high),
-        }
-    }
-
-    pub fn publish_gating_sequence(&self, sequence: i64) {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
-            SequencerKind::MultiProducer(sequencer) => sequencer.publish_gating_sequence(sequence),
-        }
-    }
-
-    pub fn get_highest(&self, low: i64, high: i64) -> i64 {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.get_highest(low, high),
-            SequencerKind::MultiProducer(sequencer) => sequencer.get_highest(low, high),
-        }
-    }
-
-    pub fn get_cursor_sequence_acquire(&self) -> i64 {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
-            SequencerKind::MultiProducer(sequencer) => sequencer.get_cursor_sequence_acquire(),
-        }
-    }
-
-    pub fn get_gating_sequence_relaxed(&self) -> i64 {
-        match self {
-            SequencerKind::SingleProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
-            SequencerKind::MultiProducer(sequencer) => sequencer.get_gating_sequence_relaxed(),
-        }
-    }
-}
-
 pub trait Sequencer: Sync + Send {
     fn next(&self, strategy: &WaitStrategy) -> i64 {
         self.next_n(1, strategy)

@@ -1,7 +1,7 @@
 use crate::poller::State::Idle;
-use crate::poller::{MultiConsumerPoller, PollerKind, SingleConsumerPoller};
+use crate::poller::{MultiConsumerPoller, SingleConsumerPoller, State};
 use crate::ring_buffer::RingBuffer;
-use crate::sequencer::{MultiProducerSequencer, SequencerKind, SingleProducerSequencer};
+use crate::sequencer::{MultiProducerSequencer, SingleProducerSequencer};
 use crate::wait_strategy::WaitStrategy;
 use std::sync::Arc;
 
@@ -32,63 +32,63 @@ impl<T> Sender<T> {
 }
 
 impl<T> Receiver<T> {
-    pub fn recv<H>(&self, handler: &H)
+    pub fn recv<H>(&self, batch_size: usize, handler: &H) -> State
     where
         H: Fn(T),
     {
-        self.buffer.poll(handler);
+        self.buffer.poll(batch_size as i64, handler)
     }
 
-    pub fn blocking_recv<H>(&self, handler: &H)
+    pub fn blocking_recv<H>(&self, batch_size: usize, handler: &H)
     where
         H: Fn(T),
     {
-        while self.buffer.poll(handler) == Idle {
+        while self.recv(batch_size, handler) == Idle {
             self.wait_strategy.wait()
         }
     }
 }
 
-pub fn spsc<T>(buffer_size: usize, producer_wait_strategy: WaitStrategy, consumer_wait_strategy: WaitStrategy) -> (Sender<T>, Receiver<T>) {
-    let sequencer = SequencerKind::SingleProducer(SingleProducerSequencer::new(buffer_size));
-    let poller = PollerKind::SingleConsumer(SingleConsumerPoller::new((buffer_size >> 4) as i64));
+pub fn spsc<T>(buffer_size: usize, pw: WaitStrategy, cw: WaitStrategy) -> (Sender<T>, Receiver<T>) {
+    let sequencer = Box::new(SingleProducerSequencer::new(buffer_size));
+    let poller = Box::new(SingleConsumerPoller::new());
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), wait_strategy: producer_wait_strategy };
-    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: consumer_wait_strategy };
+    let sender = Sender { buffer: buffer.clone(), wait_strategy: pw };
+    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: cw };
 
     (sender, receiver)
 }
 
-pub fn mpsc<T>(buffer_size: usize, producer_wait_strategy: WaitStrategy, consumer_wait_strategy: WaitStrategy) -> (Sender<T>, Receiver<T>) {
-    let sequencer = SequencerKind::MultiProducer(MultiProducerSequencer::new(buffer_size));
-    let poller = PollerKind::SingleConsumer(SingleConsumerPoller::new((buffer_size >> 4) as i64));
+pub fn mpsc<T>(buffer_size: usize, pw: WaitStrategy, cw: WaitStrategy) -> (Sender<T>, Receiver<T>) {
+    let sequencer = Box::new(MultiProducerSequencer::new(buffer_size));
+    let poller = Box::new(SingleConsumerPoller::new());
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), wait_strategy: producer_wait_strategy };
-    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: consumer_wait_strategy };
+    let sender = Sender { buffer: buffer.clone(), wait_strategy: pw };
+    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: cw };
 
     (sender, receiver)
 }
 
-pub fn spmc<T>(buffer_size: usize, producer_wait_strategy: WaitStrategy, consumer_wait_strategy: WaitStrategy) -> (Sender<T>, Receiver<T>) {
-    let sequencer = SequencerKind::SingleProducer(SingleProducerSequencer::new(buffer_size));
-    let poller = PollerKind::MultiConsumer(MultiConsumerPoller::new((buffer_size >> 4) as i64));
+pub fn spmc<T>(buffer_size: usize, pw: WaitStrategy, cw: WaitStrategy) -> (Sender<T>, Receiver<T>) {
+    let sequencer = Box::new(SingleProducerSequencer::new(buffer_size));
+    let poller = Box::new(MultiConsumerPoller::new());
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), wait_strategy: producer_wait_strategy };
-    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: consumer_wait_strategy };
+    let sender = Sender { buffer: buffer.clone(), wait_strategy: pw };
+    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: cw };
 
     (sender, receiver)
 }
 
-pub fn mpmc<T>(buffer_size: usize, producer_wait_strategy: WaitStrategy, consumer_wait_strategy: WaitStrategy) -> (Sender<T>, Receiver<T>) {
-    let sequencer = SequencerKind::MultiProducer(MultiProducerSequencer::new(buffer_size));
-    let poller = PollerKind::MultiConsumer(MultiConsumerPoller::new((buffer_size >> 4) as i64));
+pub fn mpmc<T>(buffer_size: usize, pw: WaitStrategy, cw: WaitStrategy) -> (Sender<T>, Receiver<T>) {
+    let sequencer = Box::new(MultiProducerSequencer::new(buffer_size));
+    let poller = Box::new(MultiConsumerPoller::new());
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), wait_strategy: producer_wait_strategy };
-    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: consumer_wait_strategy };
+    let sender = Sender { buffer: buffer.clone(), wait_strategy: pw };
+    let receiver = Receiver { buffer: buffer.clone(), wait_strategy: cw };
 
     (sender, receiver)
 }
