@@ -9,11 +9,11 @@ pub enum SequencerKind {
 }
 
 impl SequencerKind {
-    pub fn next(&self, strategy: WaitStrategy) -> i64 {
+    pub fn next(&self, strategy: &WaitStrategy) -> i64 {
         self.next_n(1, strategy)
     }
 
-    pub fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64 {
+    pub fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
         match self {
             SequencerKind::SingleProducer(sequencer) => sequencer.next_n(n, strategy),
             SequencerKind::MultiProducer(producer) => producer.next_n(n, strategy),
@@ -69,7 +69,7 @@ impl SequencerKind {
         }
     }
 
-    pub fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: WaitStrategy) -> i64 {
+    pub fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: &WaitStrategy) -> i64 {
         match self {
             SequencerKind::SingleProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
             SequencerKind::MultiProducer(sequencer) => sequencer.wait(gating_sequence, wrap_point, wait_strategy),
@@ -78,11 +78,11 @@ impl SequencerKind {
 }
 
 pub trait Sequencer: Sync + Send {
-    fn next(&self, strategy: WaitStrategy) -> i64 {
+    fn next(&self, strategy: &WaitStrategy) -> i64 {
         self.next_n(1, strategy)
     }
 
-    fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64;
+    fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64;
 
     fn publish_cursor_sequence(&self, sequence: i64);
 
@@ -99,7 +99,7 @@ pub trait Sequencer: Sync + Send {
     fn get_gating_sequence_acquire(&self) -> i64;
 
     #[inline(always)]
-    fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: WaitStrategy) -> i64 {
+    fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: &WaitStrategy) -> i64 {
         let mut gating: i64;
         loop {
             gating = gating_sequence.get_acquire();
@@ -133,7 +133,7 @@ impl SingleProducerSequencer {
 }
 
 impl Sequencer for SingleProducerSequencer {
-    fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64 {
+    fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
         let next: i64 = self.sequence.get_relaxed() + n as i64;
         let wrap_point: i64 = next - self.buffer_size;
 
@@ -195,7 +195,7 @@ impl MultiProducerSequencer {
 }
 
 impl Sequencer for MultiProducerSequencer {
-    fn next_n(&self, n: usize, strategy: WaitStrategy) -> i64 {
+    fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
         let n: i64 = n as i64;
         let next: i64 = self.cursor_sequence.fetch_add_volatile(n) + n;
         let wrap_point: i64 = next - self.buffer_size;

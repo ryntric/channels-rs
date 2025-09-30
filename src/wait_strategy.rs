@@ -1,9 +1,8 @@
 use std::time::Duration;
 
-static PARKING_TIMEOUT: Duration = Duration::from_nanos(1);
-
+#[derive(Debug, Copy, Clone)]
 pub enum WaitStrategy {
-    Parking,
+    Parking(Duration),
     Spinning,
     Yielding,
 }
@@ -11,7 +10,7 @@ pub enum WaitStrategy {
 impl WaitStrategy {
     pub(crate) fn wait(&self) {
         match self {
-            WaitStrategy::Parking => std::thread::park_timeout(PARKING_TIMEOUT),
+            WaitStrategy::Parking(timeout) => std::thread::park_timeout(*timeout),
             WaitStrategy::Spinning => std::hint::spin_loop(),
             WaitStrategy::Yielding => std::thread::yield_now(),
         }

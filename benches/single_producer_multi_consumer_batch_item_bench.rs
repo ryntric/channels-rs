@@ -1,6 +1,7 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use wait_strategy::WaitStrategy;
 use workers_core_rust::{channel, wait_strategy};
 
@@ -8,7 +9,7 @@ use workers_core_rust::{channel, wait_strategy};
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rx) = channel::spmc::<Event>(8192);
+    let (tx, rx) = channel::spmc::<Event>(8192, WaitStrategy::Yielding, WaitStrategy::Yielding);
     let is_running = Arc::new(AtomicBool::new(true));
     
     for _ in 0..4 {
@@ -21,7 +22,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
             };
 
             while is_running_clone.load(Ordering::Acquire) {
-                rx_clone.blocking_recv(WaitStrategy::Spinning, &handler)
+                rx_clone.blocking_recv(&handler)
             }
         });
     }
@@ -33,7 +34,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
         b.iter_batched(|| {
             vec![Event {},Event {},Event {},Event {},Event {},Event {},Event {},Event {}]
         },|events|{
-            tx.send_n(events, WaitStrategy::Spinning)
+            tx.send_n(events)
         }, BatchSize::LargeInput);
     });
 
