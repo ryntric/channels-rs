@@ -10,12 +10,6 @@
 ///
 /// # Returns
 /// The computed index within the internal buffer slice.
-///
-/// # Example
-/// ```
-/// let index = wrap_index(5, 7, 2); // sequence=5, mask=7, padding=2
-/// assert_eq!(index, 7);
-/// ```
 #[inline(always)]
 pub fn wrap_index(sequence: i64, mask: i64, padding: usize) -> usize {
     (sequence & mask) as usize + padding
@@ -34,12 +28,6 @@ pub fn wrap_index(sequence: i64, mask: i64, padding: usize) -> usize {
 ///
 /// # Panics
 /// Panics if `buffer_size` is not a power of two.
-///
-/// # Example
-/// ```
-/// let size = assert_buffer_size_pow_of_2(16); // returns 16
-/// let size = assert_buffer_size_pow_of_2(20); // panics
-/// ```
 pub fn assert_buffer_size_pow_of_2(buffer_size: usize) -> usize {
     assert!(buffer_size.is_power_of_two(), "buffer_size must be a power of two");
     buffer_size

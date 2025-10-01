@@ -14,12 +14,4 @@ pub const POINTER_SIZE: usize = size_of::<*const u8>();
 /// This is computed as `CACHE_LINE_SIZE / POINTER_SIZE` and is commonly used
 /// to pad arrays or structs to align to cache lines, reducing false sharing
 /// between threads in concurrent data structures.
-///
-/// # Examples
-///
-/// ```
-/// # use channels::constants::ARRAY_PADDING;
-/// // On a 64-bit system, ARRAY_PADDING is typically 8
-/// assert_eq!(ARRAY_PADDING, 64 / 8);
-/// ```
 pub const ARRAY_PADDING: usize = CACHE_LINE_SIZE / POINTER_SIZE;

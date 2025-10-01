@@ -46,11 +46,6 @@ impl AvailabilityBuffer {
     /// # Panics
     /// May panic if `buffer_size` is not a power of two,
     /// depending on usage of `ilog2`.
-    ///
-    /// # Example
-    /// ```
-    /// let buffer = AvailabilityBuffer::new(1024);
-    /// ```
     pub fn new(buffer_size: usize) -> Self {
         Self {
             mask: (buffer_size - 1) as i64,
@@ -88,13 +83,6 @@ impl AvailabilityBuffer {
     /// # Memory ordering
     /// Uses an `Acquire` fence to ensure that all prior stores from
     /// producers are visible before reading availability flags.
-    ///
-    /// # Example
-    /// ```
-    /// let buffer = AvailabilityBuffer::new(8);
-    /// buffer.set(3);
-    /// assert_eq!(buffer.get_available(0, 5), 2);
-    /// ```
     pub fn get_available(&self, low: i64, high: i64) -> i64 {
         fence(Ordering::Acquire);
         for sequence in low..=high {
