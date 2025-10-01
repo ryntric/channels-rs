@@ -49,11 +49,7 @@ pub trait Sequencer: Sync + Send {
     fn advance_gating_sequence(&self, gating_sequence: &Sequence, sequence: i64) {
         let mut current: i64 = gating_sequence.get_relaxed();
         loop {
-            if current > sequence {
-                break;
-            }
-
-            if gating_sequence.compare_and_exchange_weak_volatile(current, sequence) {
+            if current > sequence || gating_sequence.compare_and_exchange_weak_volatile(current, sequence) {
                 break;
             }
             current = gating_sequence.get_acquire();
