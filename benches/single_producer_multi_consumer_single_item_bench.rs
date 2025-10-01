@@ -7,7 +7,7 @@ use workers_core_rust::prelude::*;
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rx) = spmc::<Event>(8192,  WaitStrategy::Spinning, WaitStrategy::Spinning);
+    let (tx, rx) = spmc::<Event>(8192,  ProducerWaitStrategyKind::Spinning, ConsumerWaitStrategyKind::Spinning);
     let is_running = Arc::new(AtomicBool::new(true));
 
     for _ in 0..4 {

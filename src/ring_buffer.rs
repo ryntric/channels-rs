@@ -1,6 +1,6 @@
+use crate::coordinator::Coordinator;
 use crate::poller::{Poller, State};
 use crate::sequencer::Sequencer;
-use crate::wait_strategy::WaitStrategy;
 use crate::{constants, utils};
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
@@ -40,21 +40,21 @@ impl<T> RingBuffer<T> {
         self.poller.poll(&*self.sequencer, &self, batch_size, &handler)
     }
 
-    pub fn push(&self, element: T, wait_strategy: &WaitStrategy) {
-        let sequence = self.sequencer.next(wait_strategy);
+    pub fn push(&self, element: T, coordinator: &Coordinator) {
+        let sequence = self.sequencer.next(coordinator);
         let cell = &self.buffer[utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING)];
         unsafe { (*cell.get()).write(element); }
         self.sequencer.publish_cursor_sequence(sequence);
     }
 
-    pub fn push_n<I>(&self, items: I, wait_strategy: &WaitStrategy)
+    pub fn push_n<I>(&self, items: I, coordinator: &Coordinator)
     where
         I: IntoIterator<Item=T>,
         I::IntoIter: ExactSizeIterator,
     {
         let iterator = items.into_iter();
         let length = iterator.len();
-        let high = self.sequencer.next_n(length, wait_strategy);
+        let high = self.sequencer.next_n(length, coordinator);
         let low = high - (length - 1) as i64;
 
         for (index, item) in iterator.enumerate() {

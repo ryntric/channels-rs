@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use workers_core_rust::prelude::*;
@@ -7,7 +7,7 @@ use workers_core_rust::prelude::*;
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rx) = spmc::<Event>(8192, WaitStrategy::Spinning, WaitStrategy::Spinning);
+    let (tx, rx) = spmc::<Event>(8192, ProducerWaitStrategyKind::Spinning, ConsumerWaitStrategyKind::Spinning);
     let is_running = Arc::new(AtomicBool::new(true));
 
     for _ in 0..4 {

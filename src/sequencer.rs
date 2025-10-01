@@ -1,14 +1,14 @@
 use crate::availability_buffer::AvailabilityBuffer;
 use crate::sequence::Sequence;
 use crate::utils;
-use crate::wait_strategy::WaitStrategy;
+use crate::coordinator::Coordinator;
 
 pub trait Sequencer: Sync + Send {
-    fn next(&self, strategy: &WaitStrategy) -> i64 {
+    fn next(&self, strategy: &Coordinator) -> i64 {
         self.next_n(1, strategy)
     }
 
-    fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64;
+    fn next_n(&self, n: usize, strategy: &Coordinator) -> i64;
 
     fn publish_cursor_sequence(&self, sequence: i64);
 
@@ -23,12 +23,12 @@ pub trait Sequencer: Sync + Send {
     fn get_gating_sequence_relaxed(&self) -> i64;
 
     #[inline(always)]
-    fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, wait_strategy: &WaitStrategy) -> i64 {
+    fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, coordinator: &Coordinator) -> i64 {
         let mut gating: i64;
         loop {
             gating = gating_sequence.get_acquire();
             if wrap_point > gating {
-                wait_strategy.wait();
+                coordinator.wait_for_consumer();
                 continue;
             }
             return gating;
@@ -57,12 +57,12 @@ impl SingleProducerSequencer {
 }
 
 impl Sequencer for SingleProducerSequencer {
-    fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
+    fn next_n(&self, n: usize, coordinator: &Coordinator) -> i64 {
         let next: i64 = self.sequence.get_relaxed() + n as i64;
         let wrap_point: i64 = next - self.buffer_size;
 
         if wrap_point > self.cached.get_relaxed() {
-            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, strategy));
+            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, coordinator));
         }
 
         self.sequence.set_relaxed(next);
@@ -116,13 +116,13 @@ impl MultiProducerSequencer {
 }
 
 impl Sequencer for MultiProducerSequencer {
-    fn next_n(&self, n: usize, strategy: &WaitStrategy) -> i64 {
+    fn next_n(&self, n: usize, coordinator: &Coordinator) -> i64 {
         let n: i64 = n as i64;
         let next: i64 = self.cursor_sequence.fetch_add_volatile(n) + n;
         let wrap_point: i64 = next - self.buffer_size;
 
         if wrap_point > self.cached.get_relaxed() {
-            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, strategy));
+            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, coordinator));
         }
 
         next
