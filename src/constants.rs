@@ -18,7 +18,7 @@ pub const POINTER_SIZE: usize = size_of::<*const u8>();
 /// # Examples
 ///
 /// ```
-/// # use your_crate::ARRAY_PADDING;
+/// # use channels::constants::ARRAY_PADDING;
 /// // On a 64-bit system, ARRAY_PADDING is typically 8
 /// assert_eq!(ARRAY_PADDING, 64 / 8);
 /// ```

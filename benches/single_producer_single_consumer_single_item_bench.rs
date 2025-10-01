@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use workers_core_rust::prelude::*;
+use channels::prelude::*;
 
 #[derive(Copy, Clone)]
 struct Event {}
