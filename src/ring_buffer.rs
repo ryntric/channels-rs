@@ -11,6 +11,7 @@ pub(crate) struct RingBuffer<T> {
     sequencer: Box<dyn Sequencer>,
     poller: Box<dyn Poller<T>>,
     mask: i64,
+    buffer_size: usize,
 }
 
 impl<T> RingBuffer<T> {
@@ -20,6 +21,7 @@ impl<T> RingBuffer<T> {
             sequencer: sequencer,
             poller: poller,
             mask: (buffer_size - 1) as i64,
+            buffer_size: buffer_size
         }
     }
 
@@ -30,14 +32,22 @@ impl<T> RingBuffer<T> {
             .into_boxed_slice()
     }
 
+    #[inline(always)]
+    fn check_size(&self, size: usize) {
+        if size > self.buffer_size {
+            std::panic::panic_any("size is greater than buffer size");
+        }
+    }
+
     pub(crate) fn dequeue(&self, sequence: i64) -> T {
         let index: usize = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
         let cell = &self.buffer[index];
         unsafe { ptr::read((*cell.get()).as_ptr()) }
     }
 
-    pub fn poll<H: Fn(T)>(&self, batch_size: i64, handler: &H) -> State {
-        self.poller.poll(&*self.sequencer, &self, batch_size, &handler)
+    pub fn poll<H: Fn(T)>(&self, batch_size: usize, handler: &H) -> State {
+        self.check_size(batch_size);
+        self.poller.poll(&*self.sequencer, &self, batch_size as i64, &handler)
     }
 
     pub fn push(&self, element: T, coordinator: &Coordinator) {
@@ -54,6 +64,7 @@ impl<T> RingBuffer<T> {
     {
         let iterator = items.into_iter();
         let length = iterator.len();
+        self.check_size(length);
         let high = self.sequencer.next_n(length, coordinator);
         let low = high - (length - 1) as i64;
 

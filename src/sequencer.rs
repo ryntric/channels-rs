@@ -28,7 +28,7 @@ pub trait Sequencer: Sync + Send {
         loop {
             gating = gating_sequence.get_acquire();
             if wrap_point > gating {
-                coordinator.wait_for_consumer();
+                coordinator.producer_wait();
                 continue;
             }
             return gating;

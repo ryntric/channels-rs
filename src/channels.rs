@@ -21,7 +21,7 @@ pub struct Receiver<T> {
 impl<T> Sender<T> {
     pub fn send(&self, value: T) {
         self.buffer.push(value, &*self.coordinator);
-        self.coordinator.signal_consumer()
+        self.coordinator.wakeup_consumer()
     }
 
     pub fn send_n<I>(&self, items: I)
@@ -30,7 +30,7 @@ impl<T> Sender<T> {
         I::IntoIter: ExactSizeIterator,
     {
         self.buffer.push_n(items, &*self.coordinator);
-        self.coordinator.signal_consumer()
+        self.coordinator.wakeup_consumer()
     }
 }
 
@@ -39,7 +39,7 @@ impl<T> Receiver<T> {
     where
         H: Fn(T),
     {
-        self.buffer.poll(batch_size as i64, handler)
+        self.buffer.poll(batch_size, handler)
     }
 
     pub fn blocking_recv<H>(&self, batch_size: usize, handler: &H)
@@ -47,7 +47,7 @@ impl<T> Receiver<T> {
         H: Fn(T),
     {
         while self.recv(batch_size, handler) == Idle {
-            self.coordinator.wait_for_producer()
+            self.coordinator.consumer_wait()
         }
     }
 }

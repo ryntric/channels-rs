@@ -188,15 +188,15 @@ impl Coordinator {
         Self { cw, pw }
     }
 
-    pub fn wait_for_consumer(&self) {
+    pub fn producer_wait(&self) {
         self.pw.wait();
     }
 
-    pub fn wait_for_producer(&self) {
+    pub fn consumer_wait(&self) {
         self.cw.wait();
     }
 
-    pub fn signal_consumer(&self) {
+    pub fn wakeup_consumer(&self) {
         self.cw.signal();
     }
 
