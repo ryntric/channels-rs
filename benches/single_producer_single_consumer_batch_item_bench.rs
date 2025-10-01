@@ -7,10 +7,9 @@ use workers_core_rust::prelude::*;
 struct Event {}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rx) = spmc::<Event>(8192,  ProducerWaitStrategyKind::Spinning, ConsumerWaitStrategyKind::Spinning);
+    let (tx, rx) = spmc::<Event>(8192, ProducerWaitStrategyKind::Spinning, ConsumerWaitStrategyKind::Spinning);
     let is_running = Arc::new(AtomicBool::new(true));
 
-    for _ in 0..4 {
         let rx_clone = rx.clone();
         let is_running_clone = is_running.clone();
 
@@ -23,21 +22,21 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
                 rx_clone.blocking_recv(1024, &handler)
             }
         });
-    }
 
+    let mut group = c.benchmark_group("spsc/batch");
+    group.throughput(Throughput::Elements(8));
+    group.bench_function("push_n", |b| {
 
-    let event: Event = Event {};
+        let events: [Event; 8] = [Event {}; 8];
 
-    let mut group = c.benchmark_group("spmc/single");
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("push", |b| {
         b.iter(|| {
-            tx.send(*&event);
+            tx.send_n(events)
         });
     });
 
     group.finish();
     is_running.store(false, Ordering::Release);
+
 }
 
 criterion_group!(benches, bench_ring_buffer_offer_poll);

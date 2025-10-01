@@ -10,25 +10,22 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
     let (tx, rx) = spmc::<Event>(8192,  ProducerWaitStrategyKind::Spinning, ConsumerWaitStrategyKind::Spinning);
     let is_running = Arc::new(AtomicBool::new(true));
 
-    for _ in 0..4 {
-        let rx_clone = rx.clone();
-        let is_running_clone = is_running.clone();
+    let rx_clone = rx.clone();
+    let is_running_clone = is_running.clone();
 
-        std::thread::spawn(move || {
-            let handler: fn (Event) = |e| {
-                std::hint::black_box(e);
-            };
+    std::thread::spawn(move || {
+        let handler: fn(Event) = |e| {
+            std::hint::black_box(e);
+        };
 
-            while is_running_clone.load(Ordering::Acquire) {
-                rx_clone.blocking_recv(1024, &handler)
-            }
-        });
-    }
-
+        while is_running_clone.load(Ordering::Acquire) {
+            rx_clone.blocking_recv(1024, &handler)
+        }
+    });
 
     let event: Event = Event {};
 
-    let mut group = c.benchmark_group("spmc/single");
+    let mut group = c.benchmark_group("spsc/single");
     group.throughput(Throughput::Elements(1));
     group.bench_function("push", |b| {
         b.iter(|| {

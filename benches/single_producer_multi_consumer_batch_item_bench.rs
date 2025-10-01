@@ -25,7 +25,7 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
         });
     }
 
-    let mut group = c.benchmark_group("push batch");
+    let mut group = c.benchmark_group("spmc/batch");
     group.throughput(Throughput::Elements(8));
     group.bench_function("push_n", |b| {
 

@@ -13,5 +13,14 @@ harness = false
 [[bench]]
 name = "single_producer_multi_consumer_single_item_bench"
 harness = false
+
+[[bench]]
+name = "single_producer_single_consumer_batch_item_bench"
+harness = false
+
+[[bench]]
+name = "single_producer_single_consumer_single_item_bench"
+harness = false
+
 [dependencies]
 log = "0.4.28"
