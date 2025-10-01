@@ -1,31 +1,49 @@
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+/// Describes the wait strategy for a consumer in a concurrent data structure.
+///
+/// Used to determine how a consumer thread waits when no data is available.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum ConsumerWaitStrategyKind {
+    /// Continuously spin in a busy loop.
     Spinning,
+    /// Park the thread for the specified duration.
     Parking(Duration),
+    /// Yield the thread to the scheduler.
     Yielding,
+    /// Block using a condition variable until signaled.
     Blocking
 }
 
+/// Describes the wait strategy for a producer in a concurrent data structure.
+///
+/// Used to determine how a producer thread waits when the buffer is full.
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum ProducerWaitStrategyKind {
+    /// Continuously spin in a busy loop.
     Spinning,
+    /// Park the thread for the specified duration.
     Parking(Duration),
+    /// Yield the thread to the scheduler.
     Yielding,
 }
 
+/// Trait representing a consumer wait strategy.
 pub(crate) trait ConsumerWaitStrategy: Send + Sync {
+    /// Wait according to the strategy.
     fn wait(&self);
 
+    /// Optionally wake up the consumer if it is blocked.
     fn signal(&self);
 }
 
+/// Spin-loop wait strategy for consumers.
 #[derive(Clone)]
 pub(crate) struct ConsumerSpinningStrategy {}
 
 impl ConsumerSpinningStrategy {
+    /// Create a new spinning strategy.
     pub fn new() -> Self {
         Self {}
     }
@@ -42,12 +60,14 @@ impl ConsumerWaitStrategy for ConsumerSpinningStrategy {
     }
 }
 
+/// Parking wait strategy for consumers.
 #[derive(Clone)]
 pub(crate) struct ConsumerParkingStrategy {
     duration: Duration,
 }
 
 impl ConsumerParkingStrategy {
+    /// Create a new parking strategy with the specified duration.
     pub fn new(duration: Duration) -> Self {
         Self {duration}
     }
@@ -64,10 +84,12 @@ impl ConsumerWaitStrategy for ConsumerParkingStrategy {
     }
 }
 
+/// Yielding wait strategy for consumers.
 #[derive(Clone)]
 pub(crate) struct ConsumerYieldingStrategy {}
 
 impl ConsumerYieldingStrategy {
+    /// Create a new yielding strategy.
     pub fn new() -> Self {
         Self {}
     }
@@ -84,12 +106,14 @@ impl ConsumerWaitStrategy for ConsumerYieldingStrategy {
     }
 }
 
+/// Blocking wait strategy for consumers using a condition variable.
 #[derive(Clone)]
 pub(crate) struct ConsumerBlockingStrategy {
     state: Arc<(Condvar, Mutex<bool>)>
 }
 
 impl ConsumerBlockingStrategy {
+    /// Create a new blocking strategy.
     pub fn new() -> Self {
         Self { state: Arc::new((Condvar::new(), Mutex::new(false))) }
     }
@@ -113,14 +137,17 @@ impl ConsumerWaitStrategy for ConsumerBlockingStrategy {
     }
 }
 
+/// Trait representing a producer wait strategy.
 pub(crate) trait ProducerWaitStrategy: Send + Sync {
     fn wait(&self);
 }
 
+/// Spin-loop wait strategy for producers.
 #[derive(Clone)]
 pub(crate) struct ProducerSpinningStrategy {}
 
 impl ProducerSpinningStrategy {
+    /// Create a new spinning strategy.
     pub fn new() -> Self {
         Self {}
     }
@@ -132,12 +159,14 @@ impl ProducerWaitStrategy for ProducerSpinningStrategy {
     }
 }
 
+/// Parking wait strategy for producers.
 #[derive(Clone)]
 pub(crate) struct ProducerParkingStrategy {
     duration: Duration,
 }
 
 impl ProducerParkingStrategy {
+    /// Create a new parking strategy with the specified duration.
     pub fn new(duration: Duration) -> Self {
         Self {duration}
     }
@@ -149,10 +178,12 @@ impl ProducerWaitStrategy for ProducerParkingStrategy {
     }
 }
 
+/// Yielding wait strategy for producers.
 #[derive(Clone)]
 pub(crate) struct ProducerYieldingStrategy {}
 
 impl ProducerYieldingStrategy {
+    /// Create a new yielding strategy.
     pub fn new() -> Self {
         Self {}
     }
@@ -164,13 +195,14 @@ impl ProducerWaitStrategy for ProducerYieldingStrategy {
     }
 }
 
-
+/// Coordinates producer and consumer wait strategies.
 pub(crate) struct Coordinator {
     cw: Box<dyn ConsumerWaitStrategy>,
     pw: Box<dyn ProducerWaitStrategy>,
 }
 
 impl Coordinator {
+    /// Create a new coordinator with the specified producer and consumer wait strategies.
     pub fn new(pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> Self {
         let cw: Box<dyn ConsumerWaitStrategy> = match cw {
             ConsumerWaitStrategyKind::Spinning => Box::new(ConsumerSpinningStrategy::new()),
@@ -188,14 +220,17 @@ impl Coordinator {
         Self { cw, pw }
     }
 
+    /// Wait according to the producer strategy.
     pub fn producer_wait(&self) {
         self.pw.wait();
     }
 
+    /// Wait according to the consumer strategy.
     pub fn consumer_wait(&self) {
         self.cw.wait();
     }
 
+    /// Wake up a consumer that may be blocked.
     pub fn wakeup_consumer(&self) {
         self.cw.signal();
     }

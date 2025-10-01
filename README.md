@@ -1,4 +1,4 @@
-#### It is a low-latency rust concurrency library designed around ring buffers, sequencers, and customizable wait strategies. It provides both single-producer and multi-producer configurations, along with batch and single-item publishing modes, to maximize throughput and minimize contention
+#### It is a low-latency rust concurrency library designed around ring buffers, sequencers, and customizable wait strategies. It provides both spsc, mpsc, spmc, mpmc along with batch and single-item publishing modes, to maximize throughput and minimize contention
 
 **Build Environment requirements**
 - cargo 1.90.0 or greater

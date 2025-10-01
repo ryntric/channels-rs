@@ -3,25 +3,41 @@ use crate::sequence::Sequence;
 use crate::utils;
 use crate::coordinator::Coordinator;
 
+/// Trait defining a sequencer for coordinating producers and consumers in a ring buffer.
+///
+/// A `Sequencer` tracks available sequences, gating sequences, and cursor positions.
+/// It supports both single-producer and multi-producer strategies, providing methods
+/// for claiming sequences, publishing cursor progress, and waiting for consumers.
 pub trait Sequencer: Sync + Send {
+    /// Claim the next sequence for a producer.
     fn next(&self, strategy: &Coordinator) -> i64 {
         self.next_n(1, strategy)
     }
 
+    /// Claim the next `n` sequences for batch production.
     fn next_n(&self, n: usize, strategy: &Coordinator) -> i64;
 
+    /// Publish a sequence to indicate it is ready for consumption.
     fn publish_cursor_sequence(&self, sequence: i64);
 
+    /// Publish a range of sequences for batch production.
     fn publish_cursor_sequence_range(&self, low: i64, high: i64);
 
+    /// Update the gating sequence to indicate the consumer's progress.
     fn publish_gating_sequence(&self, sequence: i64);
 
+    /// Determine the highest available sequence in a range for consumers.
     fn get_highest(&self, low: i64, high: i64) -> i64;
 
+    /// Get the current cursor sequence with Acquire ordering.
     fn get_cursor_sequence_acquire(&self) -> i64;
 
+    /// Get the current gating sequence with Relaxed ordering.
     fn get_gating_sequence_relaxed(&self) -> i64;
 
+    /// Wait until the consumer has processed sequences below `wrap_point`.
+    ///
+    /// Uses the provided `Coordinator` to apply the producer wait strategy.
     #[inline(always)]
     fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, coordinator: &Coordinator) -> i64 {
         let mut gating: i64;
@@ -36,6 +52,9 @@ pub trait Sequencer: Sync + Send {
     }
 }
 
+/// Sequencer for a **single producer** scenario.
+///
+/// Uses a local cursor and gating sequences to coordinate with consumers.
 pub struct SingleProducerSequencer {
     sequence: Sequence,
     cached: Sequence,
@@ -45,6 +64,7 @@ pub struct SingleProducerSequencer {
 }
 
 impl SingleProducerSequencer {
+    /// Create a new single-producer sequencer with the specified buffer size.
     pub fn new(buffer_size: usize) -> Self {
         Self {
             sequence: Sequence::default(),
@@ -95,6 +115,10 @@ impl Sequencer for SingleProducerSequencer {
 
 }
 
+/// Sequencer for **multiple producers** scenario.
+///
+/// Coordinates multiple producers using an availability buffer to safely
+/// publish sequences without overwriting each other's data.
 pub struct MultiProducerSequencer {
     buffer_size: i64,
     cached: Sequence,
@@ -104,6 +128,7 @@ pub struct MultiProducerSequencer {
 }
 
 impl MultiProducerSequencer {
+    /// Create a new multi-producer sequencer with the specified buffer size.
     pub fn new(buffer_size: usize) -> Self {
         Self {
             buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
@@ -154,6 +179,8 @@ impl Sequencer for MultiProducerSequencer {
 
 }
 
+// SAFETY: Sequencers are thread-safe because all internal state modifications
+// are performed via atomic operations and coordinated with availability buffers.
 unsafe impl Send for SingleProducerSequencer {}
 
 unsafe impl Sync for SingleProducerSequencer {}
