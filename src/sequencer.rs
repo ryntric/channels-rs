@@ -26,6 +26,40 @@ pub trait Sequencer: Sync + Send {
     /// Update the gating sequence to indicate the consumer's progress.
     fn publish_gating_sequence(&self, sequence: i64);
 
+    /// Advances a gating sequence in a lock-free, multi-consumer context.
+    ///
+    /// This function attempts to move the provided `gating_sequence` forward to the
+    /// specified `sequence` value. It ensures that the sequence **never moves backward**,
+    /// even if multiple threads attempt to update it concurrently.
+    ///
+    /// The update is performed using a **compare-and-swap (CAS) loop**, which retries
+    /// until the sequence is successfully advanced or it is already greater than the
+    /// target value. The initial read uses relaxed ordering for efficiency, and subsequent
+    /// reads use acquire ordering to ensure proper memory visibility.
+    ///
+    /// # Parameters
+    /// - `gating_sequence`: The sequence to advance, typically representing a consumer's progress.
+    /// - `sequence`: The target sequence to advance to. The gating sequence will only move
+    ///   forward if this value is greater than its current value.
+    ///
+    /// # Guarantees
+    /// - The gating sequence is monotonic: it cannot decrease.
+    /// - Safe for concurrent calls by multiple threads.
+    /// - Lock-free: no mutexes are used. `
+    fn advance_gating_sequence(&self, gating_sequence: &Sequence, sequence: i64) {
+        let mut current: i64 = gating_sequence.get_relaxed();
+        loop {
+            if current > sequence {
+                break;
+            }
+
+            if gating_sequence.compare_and_exchange_weak_volatile(current, sequence) {
+                break;
+            }
+            current = gating_sequence.get_acquire();
+        }
+    }
+
     /// Determine the highest available sequence in a range for consumers.
     fn get_highest(&self, low: i64, high: i64) -> i64;
 
@@ -98,7 +132,7 @@ impl Sequencer for SingleProducerSequencer {
     }
 
     fn publish_gating_sequence(&self, sequence: i64) {
-        self.gating_sequence.set_release(sequence);
+        self.advance_gating_sequence(&self.gating_sequence, sequence);
     }
 
     fn get_highest(&self, _: i64, high: i64) -> i64 {
@@ -162,7 +196,7 @@ impl Sequencer for MultiProducerSequencer {
     }
 
     fn publish_gating_sequence(&self, sequence: i64) {
-        self.gating_sequence.set_release(sequence);
+        self.advance_gating_sequence(&self.gating_sequence, sequence);
     }
 
     fn get_highest(&self, low: i64, high: i64) -> i64 {
