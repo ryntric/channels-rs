@@ -1,7 +1,7 @@
 [![LICENSE](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/ryntric/channels-rs/blob/master/LICENSE)
-[![build](https://github.com/ryntric/channels-rs/actions/workflows/build.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/build.yml)
-[![test](https://github.com/ryntric/channels-rs/actions/workflows/test.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/test.yml)
-[![bench](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml)
+[![Build](https://github.com/ryntric/channels-rs/actions/workflows/build.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/build.yml)
+[![Test](https://github.com/ryntric/channels-rs/actions/workflows/test.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/test.yml)
+[![Bench](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml)
 
 #### It is a low-latency rust concurrency library designed around ring buffers, sequencers, and customizable wait strategies. It provides spsc, mpsc, spmc, mpmc along with batch and single-item publishing modes, to maximize throughput and minimize contention
 
