@@ -38,7 +38,6 @@ impl Sequence {
         self.sequence.store(value, Ordering::Relaxed);
     }
 
-
     /// Get the current value with **Acquire** memory ordering.
     ///
     /// Ensures that subsequent reads cannot be reordered before this load.
@@ -75,5 +74,83 @@ impl Default for Sequence {
     /// Create a default sequence initialized to [`INITIAL_VALUE`].
     fn default() -> Self {
         Sequence::new(INITIAL_VALUE)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sequence::Sequence;
+    use loom::sync::Arc;
+
+    #[test]
+    pub fn test_default_sequence_value() {
+        let sequence = Sequence::default();
+        assert_eq!(sequence.get_relaxed(), -1);
+    }
+
+
+    #[test]
+    fn test_set_and_get_relaxed() {
+        loom::model(|| {
+            let sequence= Arc::new(Sequence::default());
+            let cloned = sequence.clone();
+
+            loom::thread::spawn(move || {
+                cloned.set_relaxed(1);
+            });
+
+            let value = sequence.get_relaxed();
+            assert!(value == -1 || value == 1);
+        })
+    }
+
+    #[test]
+    fn test_set_and_get_rls_acq() {
+        loom::model(|| {
+            let sequence= Arc::new(Sequence::default());
+            let cloned = sequence.clone();
+
+            loom::thread::spawn(move || {
+                cloned.set_release(1);
+            });
+
+            let value = sequence.get_acquire();
+            assert!(value == -1 || value == 1);
+        })
+    }
+
+    #[test]
+    fn test_fetch_add_volatile() {
+        loom::model(|| {
+            let sequence= Arc::new(Sequence::default());
+            let cloned = sequence.clone();
+
+            loom::thread::spawn(move || {
+                cloned.fetch_add_volatile(1);
+            });
+
+            let value = sequence.get_acquire();
+            assert!(value == -1 || value == 1);
+        })
+    }
+
+    #[test]
+    fn test_compare_and_exchange_weak_volatile() {
+        loom::model(|| {
+            let sequence= Arc::new(Sequence::default());
+            let cloned = sequence.clone();
+
+            loom::thread::spawn(move || {
+
+                loop {
+                    if cloned.compare_and_exchange_weak_volatile(-1, 1) {
+                        break;
+                    }
+                }
+            });
+
+            let value = sequence.get_acquire();
+            assert!(value == -1 || value == 1);
+        })
     }
 }

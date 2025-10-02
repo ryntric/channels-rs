@@ -95,11 +95,6 @@ impl<T> RingBuffer<T> {
     ///   the logical slot in the ring buffer.
     /// - `element`: The element to be stored in the buffer at that slot.
     ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// buffer.write(seq, value);
-    /// ```
     #[inline(always)]
     fn write(&self, sequence: i64, element: T) {
         let index = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
