@@ -64,16 +64,59 @@ impl<T> RingBuffer<T> {
     /// # Safety
     /// Performs an unchecked read from the internal `UnsafeCell`. Ensure that
     /// the element at `sequence` has been properly initialized via `push` before calling.
+    /// This method is only called by `Poller`. If the buffer has no available data to consume, the 'Poller' will wait for it.
     pub(crate) fn dequeue(&self, sequence: i64) -> T {
         let index: usize = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
         let cell = &self.buffer[index];
+
+        // SAFETY:
+        // An item is only moved once, and it is managed and guaranteed by the sequencer.
         unsafe { ptr::read((*cell.get()).as_ptr()) }
+    }
+
+    /// Writes an element into the buffer at the position derived from the given `sequence`.
+    ///
+    /// The sequence number is first transformed into an array index using
+    /// [`utils::wrap_index`], taking into account the ring buffer's mask and
+    /// padding. The resulting index is then used to locate the corresponding
+    /// buffer cell, and the provided element is written directly into it.
+    ///
+    /// # Safety
+    ///
+    /// This method uses [`UnsafeCell::get`] and [`MaybeUninit::write`] internally,
+    /// which allows writing into the memory location without runtime checks.
+    /// It assumes that:
+    /// - and that reads/writes follow the ring buffer’s concurrency protocol
+    ///   to avoid data races or uninitialized access.
+    ///
+    /// # Parameters
+    ///
+    /// - `sequence`: The monotonically increasing sequence number identifying
+    ///   the logical slot in the ring buffer.
+    /// - `element`: The element to be stored in the buffer at that slot.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// buffer.write(seq, value);
+    /// ```
+    #[inline(always)]
+    fn write(&self, sequence: i64, element: T) {
+        let index = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
+        let cell = &self.buffer[index];
+
+        // SAFETY:
+        // The item may not be overwritten if it was not consumed and it is managed and guaranteed by the sequencer.
+        unsafe { (*cell.get()).write(element); }
     }
 
     /// Poll up to `batch_size` elements and process them with the provided handler.
     ///
     /// Returns [`State::Idle`] if no elements are available, or [`State::Processing`] if
     /// one or more items were consumed.
+    ///
+    /// # Panics
+    // If the batch size is greater than buffer size it will panic
     pub fn poll<H: Fn(T)>(&self, batch_size: usize, handler: &H) -> State {
         self.check_size(batch_size);
         self.poller.poll(&*self.sequencer, &self, batch_size as i64, &handler)
@@ -82,10 +125,12 @@ impl<T> RingBuffer<T> {
     /// Push a single element into the ring buffer.
     ///
     /// Blocks or spins according to the `Coordinator` if necessary.
+    ///
+    /// # Safety
+    /// If there is no available space the producer will wait for it until it became available
     pub fn push(&self, element: T, coordinator: &Coordinator) {
         let sequence = self.sequencer.next(coordinator);
-        let cell = &self.buffer[utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING)];
-        unsafe { (*cell.get()).write(element); }
+        self.write(sequence, element);
         self.sequencer.publish_cursor_sequence(sequence);
     }
 
@@ -96,6 +141,12 @@ impl<T> RingBuffer<T> {
     /// # Parameters
     /// - `items`: iterable of elements to push (must implement `ExactSizeIterator`).
     /// - `coordinator`: coordinates waiting if buffer space is not available.
+    ///
+    ///# Safety
+    /// If there is no available space the producer will wait for it until it became available
+    ///
+    /// # Panics
+    /// If items size is greater than buffer size it will panic
     pub fn push_n<I>(&self, items: I, coordinator: &Coordinator)
     where
         I: IntoIterator<Item=T>,
@@ -108,8 +159,7 @@ impl<T> RingBuffer<T> {
         let low = high - (length - 1) as i64;
 
         for (index, item) in iterator.enumerate() {
-            let cell = &self.buffer[utils::wrap_index(index as i64 + low, self.mask, constants::ARRAY_PADDING)];
-            unsafe { (*cell.get()).write(item); }
+            self.write(index as i64 + low, item);
         }
 
         self.sequencer.publish_cursor_sequence_range(low, high);
