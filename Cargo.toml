@@ -2,9 +2,12 @@
 name = "channels"
 version = "0.1.0"
 edition = "2024"
+authors = ["ryntric"]
+license = "MIT"
 
 [dev-dependencies]
 criterion = { version = "0.7.0" }
+loom = { version = "0.7.2" }
 
 [[bench]]
 name = "single_producer_multi_consumer_batch_item_bench"
@@ -21,6 +24,3 @@ harness = false
 [[bench]]
 name = "single_producer_single_consumer_single_item_bench"
 harness = false
-
-[dependencies]
-log = "0.4.28"
