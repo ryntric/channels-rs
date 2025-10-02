@@ -1,4 +1,4 @@
-name: bench
+name: Bench
 
 on:
   push:
