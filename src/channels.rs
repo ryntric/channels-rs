@@ -10,10 +10,11 @@
 
 use crate::coordinator::Coordinator;
 use crate::poller::State::Idle;
-use crate::poller::{MultiConsumerPoller, SingleConsumerPoller, State};
+use crate::poller::{MultiConsumerPoller, SingleConsumerPoller};
 use crate::prelude::{ConsumerWaitStrategyKind, ProducerWaitStrategyKind};
 use crate::ring_buffer::RingBuffer;
 use crate::sequencer::{MultiProducerSequencer, SingleProducerSequencer};
+use crate::utils;
 use std::sync::Arc;
 
 /// A sending half of the channel.
@@ -43,7 +44,7 @@ impl<T> Sender<T> {
     /// If the buffer is full, the configured producer wait strategy determines
     /// how the call behaves (e.g. spin, yield, or park).
     pub fn send(&self, value: T) {
-        self.buffer.push(value, &*self.coordinator);
+        self.buffer.push(value, &self.coordinator);
         self.coordinator.wakeup_consumer()
     }
 
@@ -59,7 +60,7 @@ impl<T> Sender<T> {
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
-        self.buffer.push_n(items, &*self.coordinator);
+        self.buffer.push_n(items, &self.coordinator);
         self.coordinator.wakeup_consumer()
     }
 }
@@ -68,14 +69,13 @@ impl<T> Receiver<T> {
     /// Attempt to receive up to `batch_size` items.
     ///
     /// Invokes the provided `handler` closure for each item.
-    /// Returns the current [`State`] of the consumer:
-    /// - [`State::Processing`] if items were processed.
-    /// - [`State::Idle`] if no items were available.
-    pub fn recv<H>(&self, batch_size: usize, handler: &H) -> State
+    pub fn recv<H>(&self, batch_size: usize, handler: &H)
     where
         H: Fn(T),
     {
-        self.buffer.poll(batch_size, handler)
+        if self.buffer.poll(batch_size, handler) == Idle {
+            self.coordinator.consumer_wait();
+        }
     }
 
     /// Continuously attempt to receive items until at least one batch is processed.
@@ -86,8 +86,8 @@ impl<T> Receiver<T> {
     where
         H: Fn(T),
     {
-        while self.recv(batch_size, handler) == Idle {
-            self.coordinator.consumer_wait()
+        while self.buffer.poll(batch_size, handler) == Idle {
+            self.coordinator.consumer_wait();
         }
     }
 }
@@ -102,6 +102,9 @@ impl<T> Receiver<T> {
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
 pub fn spsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+    utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
+    utils::assert_buffer_size_pow_of_2(buffer_size);
+
     let sequencer = Box::new(SingleProducerSequencer::new(buffer_size));
     let poller = Box::new(SingleConsumerPoller::new());
     let coordinator = Arc::new(Coordinator::new(pw, cw));
@@ -123,6 +126,9 @@ pub fn spsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
 pub fn mpsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+    utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
+    utils::assert_buffer_size_pow_of_2(buffer_size);
+
     let sequencer = Box::new(MultiProducerSequencer::new(buffer_size));
     let poller = Box::new(SingleConsumerPoller::new());
     let coordinator = Arc::new(Coordinator::new(pw, cw));
@@ -144,6 +150,9 @@ pub fn mpsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
 pub fn spmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+    utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
+    utils::assert_buffer_size_pow_of_2(buffer_size);
+
     let sequencer = Box::new(SingleProducerSequencer::new(buffer_size));
     let poller = Box::new(MultiConsumerPoller::new());
     let coordinator = Arc::new(Coordinator::new(pw, cw));
@@ -165,6 +174,9 @@ pub fn spmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
 pub fn mpmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+    utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
+    utils::assert_buffer_size_pow_of_2(buffer_size);
+
     let sequencer = Box::new(MultiProducerSequencer::new(buffer_size));
     let poller = Box::new(MultiConsumerPoller::new());
     let coordinator = Arc::new(Coordinator::new(pw, cw));

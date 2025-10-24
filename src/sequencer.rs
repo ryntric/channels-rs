@@ -1,6 +1,5 @@
 use crate::availability_buffer::AvailabilityBuffer;
 use crate::sequence::Sequence;
-use crate::utils;
 use crate::coordinator::Coordinator;
 
 /// Trait defining a sequencer for coordinating producers and consumers in a ring buffer.
@@ -99,7 +98,7 @@ impl SingleProducerSequencer {
         Self {
             sequence: Sequence::default(),
             cached: Sequence::default(),
-            buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
+            buffer_size: buffer_size as i64,
             cursor_sequence: Sequence::default(),
             gating_sequence: Sequence::default(),
         }
@@ -161,7 +160,7 @@ impl MultiProducerSequencer {
     /// Create a new multi-producer sequencer with the specified buffer size.
     pub fn new(buffer_size: usize) -> Self {
         Self {
-            buffer_size: utils::assert_buffer_size_pow_of_2(buffer_size) as i64,
+            buffer_size: buffer_size as i64,
             cached: Sequence::default(),
             cursor_sequence: Sequence::default(),
             gating_sequence: Sequence::default(),

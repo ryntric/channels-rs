@@ -4,7 +4,7 @@ use crate::sequencer::Sequencer;
 
 /// Represents the current state of a consumer poll operation.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum State {
+pub(crate) enum State {
     /// No items were available to process.
     Idle,
     /// One or more items were processed.
