@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["ryntric"]
 license = "MIT"
+description = "It is ultra-low latency channels for inter-thread messaging"
 
 [dev-dependencies]
 criterion = { version = "0.7.0" }
