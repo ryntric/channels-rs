@@ -8,7 +8,7 @@ use std::ptr;
 
 /// A high-performance ring buffer for concurrent producers and consumers.
 ///
-/// `RingBuffer<T>` stores elements in a preallocated, fixed-size array with
+/// `RingBuffer<T>` stores elements in a pre-allocated, fixed-size array with
 /// cache-line padding to reduce false sharing. It supports both **single**
 /// and **multi-consumer** pollers via a [`Poller<T>`] trait and coordinates
 /// access through a [`Sequencer`] and [`Coordinator`].

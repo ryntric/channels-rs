@@ -1,7 +1,7 @@
 //! High-performance channel abstractions based on ring buffers.
 //!
 //! This module provides [`Sender`] and [`Receiver`] types built on top of
-//! a [`RingBuffer`] with pluggable wait strategies. It supports different
+//! a ringBuffer with pluggable wait strategies. It supports different
 //! concurrency configurations such as SPSC, MPSC, SPMC, and MPMC.
 //!
 //! The design is inspired by the Disruptor pattern, but with Rust’s ownership
@@ -19,8 +19,8 @@ use std::sync::Arc;
 
 /// A sending half of the channel.
 ///
-/// `Sender<T>` pushes values into a [`RingBuffer`] and notifies the consumer
-/// through the [`Coordinator`]. It supports both single-item and batched sends.
+/// `Sender<T>` pushes values into a ringBuffer and notifies the consumer
+/// through the coordinator. It supports both single-item and batched sends.
 #[derive(Clone)]
 pub struct Sender<T> {
     buffer: Arc<RingBuffer<T>>,
@@ -29,7 +29,7 @@ pub struct Sender<T> {
 
 /// A receiving half of the channel.
 ///
-/// `Receiver<T>` pulls values from a [`RingBuffer`] using a poller and can either
+/// `Receiver<T>` pulls values from a ringBuffer using a poller and can either
 /// spin/yield/park/block depending on the chosen wait strategy. It supports both
 /// non-blocking and blocking receive loops.
 #[derive(Clone)]
