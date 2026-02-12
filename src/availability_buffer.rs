@@ -1,6 +1,6 @@
 use crate::{constants, utils};
 use std::mem::MaybeUninit;
-use std::sync::atomic::{fence, AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, Ordering};
 
 /// A buffer is used to track the availability of slots in a ring buffer.
 ///
@@ -84,12 +84,11 @@ impl AvailabilityBuffer {
     /// Uses an `Acquire` fence to ensure that all prior stores from
     /// producers are visible before reading availability flags.
     pub fn get_available(&self, low: i64, high: i64) -> i64 {
-        fence(Ordering::Acquire);
         for sequence in low..=high {
             let index = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
             let flag = self.calculate_flag(sequence);
             let atomic = &self.buffer[index];
-            if atomic.load(Ordering::Relaxed) != flag {
+            if atomic.load(Ordering::Acquire) != flag {
                 return sequence - 1;
             }
         }
@@ -111,16 +110,15 @@ impl AvailabilityBuffer {
     /// Marks a range of sequences as available.
     ///
     /// # Memory ordering
-    /// Stores each flag with `Relaxed`, followed by a `Release` fence
+    /// Stores each flag with `Release`
     /// to publish all updates together.
     pub fn set_range(&self, low: i64, high: i64) {
         for sequence in low..=high {
             let index = utils::wrap_index(sequence, self.mask, constants::ARRAY_PADDING);
             let flag = self.calculate_flag(sequence);
             let atomic = &self.buffer[index];
-            atomic.store(flag, Ordering::Relaxed);
+            atomic.store(flag, Ordering::Release);
         }
-        fence(Ordering::Release);
     }
 }
 
