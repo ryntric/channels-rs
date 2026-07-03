@@ -13,7 +13,7 @@ pub enum ConsumerWaitStrategyKind {
     /// Yield the thread to the scheduler.
     Yielding,
     /// Block using a condition variable until signaled.
-    Blocking
+    Blocking,
 }
 
 /// Describes the wait strategy for a producer in a concurrent data structure.
@@ -69,7 +69,7 @@ pub(crate) struct ConsumerParkingStrategy {
 impl ConsumerParkingStrategy {
     /// Create a new parking strategy with the specified duration.
     pub fn new(duration: Duration) -> Self {
-        Self {duration}
+        Self { duration }
     }
 }
 
@@ -109,13 +109,15 @@ impl ConsumerWaitStrategy for ConsumerYieldingStrategy {
 /// Blocking wait strategy for consumers using a condition variable.
 #[derive(Clone)]
 pub(crate) struct ConsumerBlockingStrategy {
-    state: Arc<(Condvar, Mutex<bool>)>
+    state: Arc<(Condvar, Mutex<bool>)>,
 }
 
 impl ConsumerBlockingStrategy {
     /// Create a new blocking strategy.
     pub fn new() -> Self {
-        Self { state: Arc::new((Condvar::new(), Mutex::new(false))) }
+        Self {
+            state: Arc::new((Condvar::new(), Mutex::new(false))),
+        }
     }
 }
 
@@ -168,7 +170,7 @@ pub(crate) struct ProducerParkingStrategy {
 impl ProducerParkingStrategy {
     /// Create a new parking strategy with the specified duration.
     pub fn new(duration: Duration) -> Self {
-        Self {duration}
+        Self { duration }
     }
 }
 
@@ -206,15 +208,19 @@ impl Coordinator {
     pub fn new(pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> Self {
         let cw: Box<dyn ConsumerWaitStrategy> = match cw {
             ConsumerWaitStrategyKind::Spinning => Box::new(ConsumerSpinningStrategy::new()),
-            ConsumerWaitStrategyKind::Parking(duration) => Box::new(ConsumerParkingStrategy::new(duration)),
+            ConsumerWaitStrategyKind::Parking(duration) => {
+                Box::new(ConsumerParkingStrategy::new(duration))
+            }
             ConsumerWaitStrategyKind::Yielding => Box::new(ConsumerYieldingStrategy::new()),
-            ConsumerWaitStrategyKind::Blocking => Box::new(ConsumerBlockingStrategy::new())
+            ConsumerWaitStrategyKind::Blocking => Box::new(ConsumerBlockingStrategy::new()),
         };
 
         let pw: Box<dyn ProducerWaitStrategy> = match pw {
             ProducerWaitStrategyKind::Spinning => Box::new(ProducerSpinningStrategy::new()),
-            ProducerWaitStrategyKind::Parking(duration) => Box::new(ProducerParkingStrategy::new(duration)),
-            ProducerWaitStrategyKind::Yielding => Box::new(ProducerYieldingStrategy::new())
+            ProducerWaitStrategyKind::Parking(duration) => {
+                Box::new(ProducerParkingStrategy::new(duration))
+            }
+            ProducerWaitStrategyKind::Yielding => Box::new(ProducerYieldingStrategy::new()),
         };
 
         Self { cw, pw }
@@ -234,5 +240,4 @@ impl Coordinator {
     pub fn wakeup_consumer(&self) {
         self.cw.signal();
     }
-
 }

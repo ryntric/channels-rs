@@ -24,7 +24,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct Sender<T> {
     buffer: Arc<RingBuffer<T>>,
-    coordinator: Arc<Coordinator>
+    coordinator: Arc<Coordinator>,
 }
 
 /// A receiving half of the channel.
@@ -35,7 +35,7 @@ pub struct Sender<T> {
 #[derive(Clone)]
 pub struct Receiver<T> {
     buffer: Arc<RingBuffer<T>>,
-    coordinator: Arc<Coordinator>
+    coordinator: Arc<Coordinator>,
 }
 
 impl<T> Sender<T> {
@@ -101,7 +101,11 @@ impl<T> Receiver<T> {
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn spsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+pub fn spsc<T>(
+    buffer_size: usize,
+    pw: ProducerWaitStrategyKind,
+    cw: ConsumerWaitStrategyKind,
+) -> (Sender<T>, Receiver<T>) {
     utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
     utils::assert_buffer_size_pow_of_2(buffer_size);
 
@@ -110,8 +114,14 @@ pub fn spsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
     let coordinator = Arc::new(Coordinator::new(pw, cw));
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), coordinator: coordinator.clone() };
-    let receiver = Receiver { buffer: buffer.clone(), coordinator: coordinator.clone() };
+    let sender = Sender {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
+    let receiver = Receiver {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
 
     (sender, receiver)
 }
@@ -125,17 +135,27 @@ pub fn spsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn mpsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+pub fn mpsc<T>(
+    buffer_size: usize,
+    pw: ProducerWaitStrategyKind,
+    cw: ConsumerWaitStrategyKind,
+) -> (Sender<T>, Receiver<T>) {
     utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
     utils::assert_buffer_size_pow_of_2(buffer_size);
 
     let sequencer = Box::new(MultiProducerSequencer::new(buffer_size));
     let poller = Box::new(SingleConsumerPoller::new());
     let coordinator = Arc::new(Coordinator::new(pw, cw));
-    
+
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), coordinator: coordinator.clone() };
-    let receiver = Receiver { buffer: buffer.clone(), coordinator: coordinator.clone() };
+    let sender = Sender {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
+    let receiver = Receiver {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
 
     (sender, receiver)
 }
@@ -149,7 +169,11 @@ pub fn mpsc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn spmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+pub fn spmc<T>(
+    buffer_size: usize,
+    pw: ProducerWaitStrategyKind,
+    cw: ConsumerWaitStrategyKind,
+) -> (Sender<T>, Receiver<T>) {
     utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
     utils::assert_buffer_size_pow_of_2(buffer_size);
 
@@ -158,8 +182,14 @@ pub fn spmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
     let coordinator = Arc::new(Coordinator::new(pw, cw));
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), coordinator: coordinator.clone() };
-    let receiver = Receiver { buffer: buffer.clone(), coordinator: coordinator.clone() };
+    let sender = Sender {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
+    let receiver = Receiver {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
 
     (sender, receiver)
 }
@@ -173,7 +203,11 @@ pub fn spmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn mpmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWaitStrategyKind) -> (Sender<T>, Receiver<T>) {
+pub fn mpmc<T>(
+    buffer_size: usize,
+    pw: ProducerWaitStrategyKind,
+    cw: ConsumerWaitStrategyKind,
+) -> (Sender<T>, Receiver<T>) {
     utils::assert_buffer_size_is_equal_or_less_than_i64(buffer_size);
     utils::assert_buffer_size_pow_of_2(buffer_size);
 
@@ -182,8 +216,14 @@ pub fn mpmc<T>(buffer_size: usize, pw: ProducerWaitStrategyKind, cw: ConsumerWai
     let coordinator = Arc::new(Coordinator::new(pw, cw));
 
     let buffer: Arc<RingBuffer<T>> = Arc::new(RingBuffer::new(buffer_size, sequencer, poller));
-    let sender = Sender { buffer: buffer.clone(), coordinator: coordinator.clone() };
-    let receiver = Receiver { buffer: buffer.clone(), coordinator: coordinator.clone() };
+    let sender = Sender {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
+    let receiver = Receiver {
+        buffer: buffer.clone(),
+        coordinator: coordinator.clone(),
+    };
 
     (sender, receiver)
 }

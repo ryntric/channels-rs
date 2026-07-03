@@ -28,7 +28,13 @@ pub(crate) trait Poller<T>: Send + Sync {
     /// # Returns
     /// - [`State::Idle`] if no items were available.
     /// - [`State::Processing`] if one or more items were consumed.
-    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, batch_size: i64, handler: &dyn Fn(T)) -> State;
+    fn poll(
+        &self,
+        sequencer: &dyn Sequencer,
+        buffer: &RingBuffer<T>,
+        batch_size: i64,
+        handler: &dyn Fn(T),
+    ) -> State;
 }
 
 /// Single-consumer poller.
@@ -44,10 +50,19 @@ impl SingleConsumerPoller {
 }
 
 impl<T> Poller<T> for SingleConsumerPoller {
-    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, batch_size: i64, handler: &dyn Fn(T)) -> State {
+    fn poll(
+        &self,
+        sequencer: &dyn Sequencer,
+        buffer: &RingBuffer<T>,
+        batch_size: i64,
+        handler: &dyn Fn(T),
+    ) -> State {
         let current = sequencer.get_gating_sequence_relaxed();
         let next: i64 = current + 1;
-        let available: i64 = std::cmp::min(sequencer.get_cursor_sequence_acquire(), current + batch_size);
+        let available: i64 = std::cmp::min(
+            sequencer.get_cursor_sequence_acquire(),
+            current + batch_size,
+        );
 
         if next > available {
             return State::Idle;
@@ -81,7 +96,13 @@ impl MultiConsumerPoller {
 }
 
 impl<T> Poller<T> for MultiConsumerPoller {
-    fn poll(&self, sequencer: &dyn Sequencer, buffer: &RingBuffer<T>, batch_size: i64, handler: &dyn Fn(T)) -> State {
+    fn poll(
+        &self,
+        sequencer: &dyn Sequencer,
+        buffer: &RingBuffer<T>,
+        batch_size: i64,
+        handler: &dyn Fn(T),
+    ) -> State {
         let mut current: i64;
         let mut next: i64;
         let mut available: i64;
@@ -90,14 +111,20 @@ impl<T> Poller<T> for MultiConsumerPoller {
         loop {
             current = self.sequence.get_acquire();
             next = current + 1;
-            available = std::cmp::min(sequencer.get_cursor_sequence_acquire(), current + batch_size);
+            available = std::cmp::min(
+                sequencer.get_cursor_sequence_acquire(),
+                current + batch_size,
+            );
 
             if next > available {
                 return State::Idle;
             }
 
             highest = sequencer.get_highest(next, available);
-            if self.sequence.compare_and_exchange_weak_volatile(current, highest) {
+            if self
+                .sequence
+                .compare_and_exchange_weak_volatile(current, highest)
+            {
                 break;
             }
         }

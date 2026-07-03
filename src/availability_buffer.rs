@@ -2,30 +2,30 @@ use crate::{constants, utils};
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-/// A buffer is used to track the availability of slots in a ring buffer.
+/// a buffer is used to track the availability of slots in a ring buffer.
 ///
-/// # Overview
-/// `AvailabilityBuffer` is typically used in high-performance
-/// concurrent ring buffer implementations (like Disruptor-style designs),
+/// # overview
+/// `availabilitybuffer` is typically used in high-performance
+/// concurrent ring buffer implementations (like disruptor-style designs),
 /// where producers mark slots as available and consumers check which
 /// slots are visible to them.
 ///
-/// Internally, the buffer holds flags (`AtomicI32`) associated with each slot.
-/// These flags are incremented in a way that allows detecting slot reuse
+/// internally, the buffer holds flags (`atomici32`) associated with each slot.
+/// these flags are incremented in a way that allows detecting slot reuse
 /// across wrap-around without explicit clearing.
 ///
-/// # Concurrency
-/// - Uses atomic operations with appropriate memory fences
+/// # concurrency
+/// - uses atomic operations with appropriate memory fences
 ///   to ensure visibility between producer and consumer threads.
-/// - The `set` and `set_range` methods publish availability of sequences.
-/// - The `get_available` method checks availability up to a given range.
+/// - the `set` and `set_range` methods publish availability of sequences.
+/// - the `get_available` method checks availability up to a given range.
 ///
-/// # Memory layout
-/// The buffer is over-allocated with extra padding (see `constants::ARRAY_PADDING`)
+/// # memory layout
+/// the buffer is over-allocated with extra padding (see `constants::array_padding`)
 /// to reduce false sharing between cache lines.
 ///
-/// # Safety
-/// This struct implements `Send` and `Sync` manually, as it contains
+/// # safety
+/// this struct implements `send` and `sync` manually, as it contains
 /// atomics and padded memory regions that are safe to share across threads.
 pub struct AvailabilityBuffer {
     /// Bitmask for wrapping sequence indices into the buffer length.
@@ -59,7 +59,8 @@ impl AvailabilityBuffer {
     ///
     /// Adds padding on both sides to avoid false sharing.
     fn init_buffer(size: usize) -> Box<[AtomicI32]> {
-        let mut buffer: Box<[MaybeUninit<AtomicI32>]> = Box::new_uninit_slice(size + (constants::ARRAY_PADDING << 1));
+        let mut buffer: Box<[MaybeUninit<AtomicI32>]> =
+            Box::new_uninit_slice(size + (constants::ARRAY_PADDING << 1));
         for i in 0..size {
             buffer[i + constants::ARRAY_PADDING].write(AtomicI32::new(-1));
         }

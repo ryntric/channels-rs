@@ -33,13 +33,17 @@ impl<T> RingBuffer<T> {
     ///
     /// # Returns
     /// A new `RingBuffer<T>` instance ready for push and poll operations.
-    pub fn new(buffer_size: usize, sequencer: Box<dyn Sequencer>, poller: Box<dyn Poller<T>>) -> RingBuffer<T> {
+    pub fn new(
+        buffer_size: usize,
+        sequencer: Box<dyn Sequencer>,
+        poller: Box<dyn Poller<T>>,
+    ) -> RingBuffer<T> {
         RingBuffer {
             buffer: Self::create_buffer(buffer_size),
-            sequencer: sequencer,
-            poller: poller,
+            sequencer,
+            poller,
             mask: (buffer_size - 1) as i64,
-            buffer_size: buffer_size
+            buffer_size,
         }
     }
 
@@ -102,7 +106,9 @@ impl<T> RingBuffer<T> {
 
         // SAFETY:
         // The item may not be overwritten if it was not consumed and it is managed and guaranteed by the sequencer.
-        unsafe { (*cell.get()).write(element); }
+        unsafe {
+            (*cell.get()).write(element);
+        }
     }
 
     /// Poll up to `batch_size` elements and process them with the provided handler.
@@ -114,7 +120,8 @@ impl<T> RingBuffer<T> {
     // If the batch size is greater than buffer size it will panic
     pub fn poll<H: Fn(T)>(&self, batch_size: usize, handler: &H) -> State {
         self.check_size(batch_size);
-        self.poller.poll(&*self.sequencer, &self, batch_size as i64, &handler)
+        self.poller
+            .poll(&*self.sequencer, self, batch_size as i64, &handler)
     }
 
     /// Push a single element into the ring buffer.
@@ -144,7 +151,7 @@ impl<T> RingBuffer<T> {
     /// If items size is greater than buffer size it will panic
     pub fn push_n<I>(&self, items: I, coordinator: &Coordinator)
     where
-        I: IntoIterator<Item=T>,
+        I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
         let iterator = items.into_iter();

@@ -1,6 +1,6 @@
 use crate::availability_buffer::AvailabilityBuffer;
-use crate::sequence::Sequence;
 use crate::coordinator::Coordinator;
+use crate::sequence::Sequence;
 
 /// Trait defining a sequencer for coordinating producers and consumers in a ring buffer.
 ///
@@ -48,7 +48,9 @@ pub trait Sequencer: Sync + Send {
     fn advance_gating_sequence(&self, gating_sequence: &Sequence, sequence: i64) {
         let mut current: i64 = gating_sequence.get_relaxed();
         loop {
-            if current > sequence || gating_sequence.compare_and_exchange_weak_volatile(current, sequence) {
+            if current > sequence
+                || gating_sequence.compare_and_exchange_weak_volatile(current, sequence)
+            {
                 break;
             }
             current = gating_sequence.get_acquire();
@@ -111,7 +113,8 @@ impl Sequencer for SingleProducerSequencer {
         let wrap_point: i64 = next - self.buffer_size;
 
         if wrap_point > self.cached.get_relaxed() {
-            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, coordinator));
+            self.cached
+                .set_relaxed(self.wait(&self.gating_sequence, wrap_point, coordinator));
         }
 
         self.sequence.set_relaxed(next);
@@ -141,7 +144,6 @@ impl Sequencer for SingleProducerSequencer {
     fn get_gating_sequence_relaxed(&self) -> i64 {
         self.gating_sequence.get_relaxed()
     }
-
 }
 
 /// Sequencer for **multiple producers** scenario.
@@ -176,7 +178,8 @@ impl Sequencer for MultiProducerSequencer {
         let wrap_point: i64 = next - self.buffer_size;
 
         if wrap_point > self.cached.get_relaxed() {
-            self.cached.set_relaxed(self.wait(&self.gating_sequence, wrap_point, coordinator));
+            self.cached
+                .set_relaxed(self.wait(&self.gating_sequence, wrap_point, coordinator));
         }
 
         next
@@ -205,7 +208,6 @@ impl Sequencer for MultiProducerSequencer {
     fn get_gating_sequence_relaxed(&self) -> i64 {
         self.gating_sequence.get_relaxed()
     }
-
 }
 
 // SAFETY: Sequencers are thread-safe because all internal state modifications

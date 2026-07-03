@@ -88,11 +88,10 @@ mod tests {
         assert_eq!(sequence.get_relaxed(), -1);
     }
 
-
     #[test]
     fn test_set_and_get_relaxed() {
         loom::model(|| {
-            let sequence= Arc::new(Sequence::default());
+            let sequence = Arc::new(Sequence::default());
             let cloned = sequence.clone();
 
             loom::thread::spawn(move || {
@@ -107,7 +106,7 @@ mod tests {
     #[test]
     fn test_set_and_get_rls_acq() {
         loom::model(|| {
-            let sequence= Arc::new(Sequence::default());
+            let sequence = Arc::new(Sequence::default());
             let cloned = sequence.clone();
 
             loom::thread::spawn(move || {
@@ -122,7 +121,7 @@ mod tests {
     #[test]
     fn test_fetch_add_volatile() {
         loom::model(|| {
-            let sequence= Arc::new(Sequence::default());
+            let sequence = Arc::new(Sequence::default());
             let cloned = sequence.clone();
 
             loom::thread::spawn(move || {
@@ -137,11 +136,10 @@ mod tests {
     #[test]
     fn test_compare_and_exchange_weak_volatile() {
         loom::model(|| {
-            let sequence= Arc::new(Sequence::default());
+            let sequence = Arc::new(Sequence::default());
             let cloned = sequence.clone();
 
             loom::thread::spawn(move || {
-
                 loop {
                     if cloned.compare_and_exchange_weak_volatile(-1, 1) {
                         break;
