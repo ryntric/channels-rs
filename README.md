@@ -2,6 +2,8 @@
 [![Build](https://github.com/ryntric/channels-rs/actions/workflows/build.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/build.yml)
 [![Test](https://github.com/ryntric/channels-rs/actions/workflows/test.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/test.yml)
 [![Bench](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml)
+[![Crates.io Version](https://img.shields.io/crates/v/channels-rs?label=Crates.io)](https://crates.io/crates/channels-rs)
+[![Downloads](https://img.shields.io/crates/dr/channels-rs?style=flat&label=Downloads)](https://crates.io/crates/channels-rs)
 
 #### It is a low-latency rust concurrency library designed around ring buffers, sequencers, and customizable wait strategies. It provides spsc, mpsc, spmc, mpmc along with batch and single-item publishing modes, to maximize throughput and minimize contention
 
