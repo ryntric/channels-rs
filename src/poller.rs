@@ -121,6 +121,10 @@ impl<T: Send> Poller<T> for MultiConsumerPoller {
             }
 
             highest = sequencer.get_highest(next, available);
+            if next > highest {
+                return State::Idle;
+            }
+
             if self
                 .sequence
                 .compare_and_exchange_weak_volatile(current, highest)
@@ -135,5 +139,35 @@ impl<T: Send> Poller<T> for MultiConsumerPoller {
 
         sequencer.publish_gating_sequence(highest);
         State::Processing
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::coordinator::{ConsumerWaitStrategyKind, Coordinator, ProducerWaitStrategyKind};
+    use crate::poller::MultiConsumerPoller;
+    use crate::poller::State::Idle;
+    use crate::ring_buffer::RingBuffer;
+    use crate::sequencer::{MultiProducerSequencer, Sequencer};
+    use ConsumerWaitStrategyKind::Spinning;
+
+    #[test]
+    pub fn test_that_state_is_idle_when_sequence_is_claimed_but_not_published() {
+        let sequencer = MultiProducerSequencer::new(8);
+        let coordinator = Coordinator::new(ProducerWaitStrategyKind::Spinning, Spinning);
+
+        let _ = sequencer.next(&coordinator);
+
+        let ring_buffer = RingBuffer::new(
+            8,
+            Box::new(sequencer),
+            Box::new(MultiConsumerPoller::new())
+        );
+        let handler: fn(i32) = |_| {
+            panic!("handler must not be called for an unpublished sequence");
+        };
+
+        let state = ring_buffer.poll(8, &handler);
+        assert_eq!(Idle, state);
     }
 }
