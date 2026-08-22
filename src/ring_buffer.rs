@@ -15,7 +15,7 @@ use std::ptr;
 ///
 /// # Safety
 /// Internally uses [`UnsafeCell`] and [`MaybeUninit`] to perform lock-free reads and writes.
-pub(crate) struct RingBuffer<T> {
+pub(crate) struct RingBuffer<T: Send> {
     buffer: Box<[UnsafeCell<MaybeUninit<T>>]>,
     sequencer: Box<dyn Sequencer>,
     poller: Box<dyn Poller<T>>,
@@ -23,7 +23,7 @@ pub(crate) struct RingBuffer<T> {
     buffer_size: usize,
 }
 
-impl<T> RingBuffer<T> {
+impl<T: Send> RingBuffer<T> {
     /// Create a new ring buffer with the specified size, sequencer, and poller.
     ///
     /// # Parameters
@@ -168,8 +168,4 @@ impl<T> RingBuffer<T> {
     }
 }
 
-// SAFETY: `RingBuffer` is safe to share between threads because all internal mutability
-// is handled with `UnsafeCell` and sequencer coordination ensures proper synchronization.
-unsafe impl<T> Sync for RingBuffer<T> {}
-
-unsafe impl<T> Send for RingBuffer<T> {}
+unsafe impl<T: Send> Sync for RingBuffer<T> {}

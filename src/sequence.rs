@@ -15,11 +15,6 @@ pub struct Sequence {
     sequence: AtomicI64,
 }
 
-// SAFETY: Sequence is thread-safe due to internal atomic operations.
-unsafe impl Sync for Sequence {}
-
-unsafe impl Send for Sequence {}
-
 impl Sequence {
     /// Create a new sequence initialized to `value`.
     pub fn new(value: i64) -> Self {

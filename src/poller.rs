@@ -16,7 +16,7 @@ pub(crate) enum State {
 /// A poller is responsible for consuming items from a [`RingBuffer`]
 /// according to the rules of a sequencer. It allows both single and
 /// multi-consumer implementations.
-pub(crate) trait Poller<T>: Send + Sync {
+pub(crate) trait Poller<T: Send>: Send + Sync {
     /// Poll up to `batch_size` items from the ring buffer.
     ///
     /// # Parameters
@@ -49,7 +49,7 @@ impl SingleConsumerPoller {
     }
 }
 
-impl<T> Poller<T> for SingleConsumerPoller {
+impl<T: Send> Poller<T> for SingleConsumerPoller {
     fn poll(
         &self,
         sequencer: &dyn Sequencer,
@@ -95,7 +95,7 @@ impl MultiConsumerPoller {
     }
 }
 
-impl<T> Poller<T> for MultiConsumerPoller {
+impl<T: Send> Poller<T> for MultiConsumerPoller {
     fn poll(
         &self,
         sequencer: &dyn Sequencer,
@@ -137,12 +137,3 @@ impl<T> Poller<T> for MultiConsumerPoller {
         State::Processing
     }
 }
-
-// SAFETY: SingleConsumerPoller and MultiConsumerPoller are thread-safe as designed.
-unsafe impl Send for SingleConsumerPoller {}
-
-unsafe impl Sync for SingleConsumerPoller {}
-
-unsafe impl Send for MultiConsumerPoller {}
-
-unsafe impl Sync for MultiConsumerPoller {}
