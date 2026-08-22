@@ -7,7 +7,7 @@ use crate::sequence::Sequence;
 /// A `Sequencer` tracks available sequences, gating sequences, and cursor positions.
 /// It supports both single-producer and multi-producer strategies, providing methods
 /// for claiming sequences, publishing cursor progress, and waiting for consumers.
-pub trait Sequencer: Sync + Send {
+pub trait Sequencer: Send + Sync {
     /// Claim the next sequence for a producer.
     fn next(&self, strategy: &Coordinator) -> i64 {
         self.next_n(1, strategy)
@@ -209,12 +209,6 @@ impl Sequencer for MultiProducerSequencer {
         self.gating_sequence.get_relaxed()
     }
 }
-
-// SAFETY: Sequencers are thread-safe because all internal state modifications
-// are performed via atomic operations and coordinated with availability buffers.
-unsafe impl Send for SingleProducerSequencer {}
-
-unsafe impl Sync for SingleProducerSequencer {}
 
 unsafe impl Send for MultiProducerSequencer {}
 

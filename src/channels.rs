@@ -22,7 +22,7 @@ use std::sync::Arc;
 /// `Sender<T>` pushes values into a ringBuffer and notifies the consumer
 /// through the coordinator. It supports both single-item and batched sends.
 #[derive(Clone)]
-pub struct Sender<T> {
+pub struct Sender<T: Send> {
     buffer: Arc<RingBuffer<T>>,
     coordinator: Arc<Coordinator>,
 }
@@ -33,12 +33,12 @@ pub struct Sender<T> {
 /// spin/yield/park/block depending on the chosen wait strategy. It supports both
 /// non-blocking and blocking receive loops.
 #[derive(Clone)]
-pub struct Receiver<T> {
+pub struct Receiver<T: Send> {
     buffer: Arc<RingBuffer<T>>,
     coordinator: Arc<Coordinator>,
 }
 
-impl<T> Sender<T> {
+impl<T: Send> Sender<T> {
     /// Send a single value into the buffer.
     ///
     /// If the buffer is full, the configured producer wait strategy determines
@@ -65,7 +65,7 @@ impl<T> Sender<T> {
     }
 }
 
-impl<T> Receiver<T> {
+impl<T: Send> Receiver<T> {
     /// Attempt to receive up to `batch_size` items.
     ///
     /// Invokes the provided `handler` closure for each item.
@@ -101,7 +101,7 @@ impl<T> Receiver<T> {
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn spsc<T>(
+pub fn spsc<T: Send>(
     buffer_size: usize,
     pw: ProducerWaitStrategyKind,
     cw: ConsumerWaitStrategyKind,
@@ -135,7 +135,7 @@ pub fn spsc<T>(
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn mpsc<T>(
+pub fn mpsc<T: Send>(
     buffer_size: usize,
     pw: ProducerWaitStrategyKind,
     cw: ConsumerWaitStrategyKind,
@@ -169,7 +169,7 @@ pub fn mpsc<T>(
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn spmc<T>(
+pub fn spmc<T: Send>(
     buffer_size: usize,
     pw: ProducerWaitStrategyKind,
     cw: ConsumerWaitStrategyKind,
@@ -203,7 +203,7 @@ pub fn spmc<T>(
 /// - `buffer_size`: capacity of the underlying ring buffer.
 /// - `pw`: producer wait strategy.
 /// - `cw`: consumer wait strategy.
-pub fn mpmc<T>(
+pub fn mpmc<T: Send>(
     buffer_size: usize,
     pw: ProducerWaitStrategyKind,
     cw: ConsumerWaitStrategyKind,

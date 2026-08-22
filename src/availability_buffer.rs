@@ -122,7 +122,3 @@ impl AvailabilityBuffer {
         }
     }
 }
-
-unsafe impl Sync for AvailabilityBuffer {}
-
-unsafe impl Send for AvailabilityBuffer {}
