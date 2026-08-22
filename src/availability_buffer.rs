@@ -59,10 +59,11 @@ impl AvailabilityBuffer {
     ///
     /// Adds padding on both sides to avoid false sharing.
     fn init_buffer(size: usize) -> Box<[AtomicI32]> {
-        let mut buffer: Box<[MaybeUninit<AtomicI32>]> =
-            Box::new_uninit_slice(size + (constants::ARRAY_PADDING << 1));
-        for i in 0..size {
-            buffer[i + constants::ARRAY_PADDING].write(AtomicI32::new(-1));
+        let length: usize = size + (constants::ARRAY_PADDING << 1);
+
+        let mut buffer: Box<[MaybeUninit<AtomicI32>]> = Box::new_uninit_slice(length);
+        for i in 0..length {
+            buffer[i].write(AtomicI32::new(-1));
         }
         unsafe { buffer.assume_init() }
     }
@@ -119,6 +120,30 @@ impl AvailabilityBuffer {
             let flag = self.calculate_flag(sequence);
             let atomic = &self.buffer[index];
             atomic.store(flag, Ordering::Release);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::availability_buffer::AvailabilityBuffer;
+    use crate::constants;
+    use std::sync::atomic::Ordering::Relaxed;
+
+    #[test]
+    pub fn test_size_with_paddings() {
+        let buffer_size = 8;
+        let availability_buffer = AvailabilityBuffer::new(buffer_size);
+        let buffer = availability_buffer.buffer;
+        assert_eq!(buffer.len(), buffer_size + (constants::ARRAY_PADDING << 1));
+    }
+
+    #[test]
+    pub fn test_buffer_is_fully_initialized() {
+        let availability_buffer = AvailabilityBuffer::new(8);
+        let buffer = availability_buffer.buffer;
+        for x in buffer {
+            assert_eq!(x.load(Relaxed), -1)
         }
     }
 }
