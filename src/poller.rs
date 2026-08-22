@@ -158,11 +158,8 @@ mod tests {
 
         let _ = sequencer.next(&coordinator);
 
-        let ring_buffer = RingBuffer::new(
-            8,
-            Box::new(sequencer),
-            Box::new(MultiConsumerPoller::new())
-        );
+        let ring_buffer =
+            RingBuffer::new(8, Box::new(sequencer), Box::new(MultiConsumerPoller::new()));
         let handler: fn(i32) = |_| {
             panic!("handler must not be called for an unpublished sequence");
         };
