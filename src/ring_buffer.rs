@@ -58,8 +58,8 @@ impl<T: Send> RingBuffer<T> {
     /// Check that a requested batch size does not exceed the buffer capacity.
     #[inline(always)]
     fn check_size(&self, size: usize) {
-        if size > self.buffer_size {
-            std::panic::panic_any("size is greater than buffer size");
+        if size > self.buffer_size || size == 0 {
+            std::panic::panic_any("size is greater than buffer size or equal to 0");
         }
     }
 
@@ -152,16 +152,16 @@ impl<T: Send> RingBuffer<T> {
     pub fn push_n<I>(&self, items: I, coordinator: &Coordinator)
     where
         I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
     {
-        let iterator = items.into_iter();
-        let length = iterator.len();
+        let collected: Vec<T> = items.into_iter().collect();
+        let length = collected.len();
         self.check_size(length);
+
         let high = self.sequencer.next_n(length, coordinator);
         let low = high - (length - 1) as i64;
 
-        for (index, item) in iterator.enumerate() {
-            self.write(index as i64 + low, item);
+        for (sequence, element) in (low..=high).zip(collected) {
+            self.write(sequence, element);
         }
 
         self.sequencer.publish_cursor_sequence_range(low, high);
@@ -169,3 +169,55 @@ impl<T: Send> RingBuffer<T> {
 }
 
 unsafe impl<T: Send> Sync for RingBuffer<T> {}
+
+#[cfg(test)]
+mod tests {
+    use crate::coordinator::ConsumerWaitStrategyKind::Spinning;
+    use crate::coordinator::{Coordinator, ProducerWaitStrategyKind};
+    use crate::poller::SingleConsumerPoller;
+    use crate::ring_buffer::RingBuffer;
+    use crate::sequence::INITIAL_VALUE;
+    use crate::sequencer::{MultiProducerSequencer, SingleProducerSequencer};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    pub fn test_panic_during_iteration_does_not_reserve_multi_producer_sequences() {
+        let coordinator = Coordinator::new(ProducerWaitStrategyKind::Spinning, Spinning);
+        let ring_buffer: RingBuffer<i32> = RingBuffer::new(
+            8,
+            Box::new(MultiProducerSequencer::new(8)),
+            Box::new(SingleConsumerPoller::new()),
+        );
+
+        let iter = [1, 2]
+            .into_iter()
+            .chain(std::iter::once_with(|| panic!("panic during iteration")));
+
+        let _ = catch_unwind(AssertUnwindSafe(|| ring_buffer.push_n(iter, &coordinator)));
+
+        assert_eq!(
+            INITIAL_VALUE,
+            ring_buffer.sequencer.get_cursor_sequence_acquire()
+        )
+    }
+
+    #[test]
+    pub fn test_panic_during_iteration_does_not_reserve_single_producer_sequences() {
+        let coordinator = Coordinator::new(ProducerWaitStrategyKind::Spinning, Spinning);
+        let ring_buffer: RingBuffer<i32> = RingBuffer::new(
+            8,
+            Box::new(SingleProducerSequencer::new(8)),
+            Box::new(SingleConsumerPoller::new()),
+        );
+
+        let iter = [1, 2]
+            .into_iter()
+            .chain(std::iter::once_with(|| panic!("panic during iteration")));
+
+        let _ = catch_unwind(AssertUnwindSafe(|| ring_buffer.push_n(iter, &coordinator)));
+
+        ring_buffer.push(1, &coordinator);
+
+        assert_eq!(0, ring_buffer.sequencer.get_cursor_sequence_acquire())
+    }
+}
