@@ -3,8 +3,10 @@ use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-#[derive(Copy, Clone)]
-struct Event {}
+#[derive(Copy, Clone, Default)]
+struct Event {
+    number: i32,
+}
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
     let (tx, rx) = spmc::<Event>(
@@ -18,16 +20,16 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
     let is_running_clone = is_running.clone();
 
     std::thread::spawn(move || {
-        let handler: fn(Event) = |e| {
-            std::hint::black_box(e);
-        };
+        let mut buffer = Vec::with_capacity(1024);
 
         while is_running_clone.load(Ordering::Acquire) {
-            rx_clone.blocking_recv(1024, &handler)
+            rx_clone.blocking_recv(&mut buffer);
+            std::hint::black_box(&buffer);
+            buffer.clear();
         }
     });
 
-    let event: Event = Event {};
+    let event: Event = Event::default();
 
     let mut group = c.benchmark_group("spsc/single");
     group.throughput(Throughput::Elements(1));

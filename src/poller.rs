@@ -1,3 +1,4 @@
+use crate::poller::State::Idle;
 use crate::ring_buffer::RingBuffer;
 use crate::sequence::Sequence;
 use crate::sequencer::Sequencer;
@@ -32,8 +33,8 @@ pub(crate) trait Poller<T: Send>: Send + Sync {
         &self,
         sequencer: &dyn Sequencer,
         buffer: &RingBuffer<T>,
-        batch_size: i64,
-        handler: &dyn Fn(T),
+        buffer_size: i64,
+        vector: &mut Vec<T>,
     ) -> State;
 }
 
@@ -54,23 +55,27 @@ impl<T: Send> Poller<T> for SingleConsumerPoller {
         &self,
         sequencer: &dyn Sequencer,
         buffer: &RingBuffer<T>,
-        batch_size: i64,
-        handler: &dyn Fn(T),
+        buffer_size: i64,
+        vector: &mut Vec<T>,
     ) -> State {
         let current = sequencer.get_gating_sequence_relaxed();
         let next: i64 = current + 1;
         let available: i64 = std::cmp::min(
             sequencer.get_cursor_sequence_acquire(),
-            current + batch_size,
+            current + buffer_size,
         );
 
         if next > available {
-            return State::Idle;
+            return Idle;
         }
 
         let highest: i64 = sequencer.get_highest(next, available);
+        if next > highest {
+            return Idle;
+        }
+
         for sequence in next..=highest {
-            handler(buffer.dequeue(sequence));
+            vector.push(buffer.dequeue(sequence))
         }
 
         sequencer.publish_gating_sequence(highest);
@@ -100,8 +105,8 @@ impl<T: Send> Poller<T> for MultiConsumerPoller {
         &self,
         sequencer: &dyn Sequencer,
         buffer: &RingBuffer<T>,
-        batch_size: i64,
-        handler: &dyn Fn(T),
+        buffer_size: i64,
+        vector: &mut Vec<T>,
     ) -> State {
         let mut current: i64;
         let mut next: i64;
@@ -113,16 +118,16 @@ impl<T: Send> Poller<T> for MultiConsumerPoller {
             next = current + 1;
             available = std::cmp::min(
                 sequencer.get_cursor_sequence_acquire(),
-                current + batch_size,
+                current + buffer_size,
             );
 
             if next > available {
-                return State::Idle;
+                return Idle;
             }
 
             highest = sequencer.get_highest(next, available);
             if next > highest {
-                return State::Idle;
+                return Idle;
             }
 
             if self
@@ -134,7 +139,7 @@ impl<T: Send> Poller<T> for MultiConsumerPoller {
         }
 
         for sequence in next..=highest {
-            handler(buffer.dequeue(sequence));
+            vector.push(buffer.dequeue(sequence))
         }
 
         sequencer.publish_gating_sequence(highest);
@@ -158,13 +163,12 @@ mod tests {
 
         let _ = sequencer.next(&coordinator);
 
+        let mut buffer: Vec<i32> = Vec::with_capacity(8);
+
         let ring_buffer =
             RingBuffer::new(8, Box::new(sequencer), Box::new(MultiConsumerPoller::new()));
-        let handler: fn(i32) = |_| {
-            panic!("handler must not be called for an unpublished sequence");
-        };
 
-        let state = ring_buffer.poll(8, &handler);
+        let state = ring_buffer.poll(&mut buffer);
         assert_eq!(Idle, state);
     }
 }
