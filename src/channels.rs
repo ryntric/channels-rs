@@ -52,15 +52,17 @@ impl<T: Send> Sender<T> {
     ///
     /// This is more efficient than calling [`send`](Self::send) repeatedly,
     /// as it reduces synchronization overhead.
+    pub fn send_v(&self, items: Vec<T>) {
+        self.buffer.push_v(items, &self.coordinator);
+        self.coordinator.wakeup_consumer()
+    }
+
+    /// Send multiple values into the buffer in a batch.
     ///
-    /// # Type Parameters
-    /// - `I`: an `IntoIterator` where the iterator implements `ExactSizeIterator`.
-    pub fn send_n<I>(&self, items: I)
-    where
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        self.buffer.push_n(items, &self.coordinator);
+    /// This is more efficient than calling [`send`](Self::send) repeatedly,
+    /// as it reduces synchronization overhead.
+    pub fn send_a<const N: usize>(&self, items: [T; N]) {
+        self.buffer.push_a(items, &self.coordinator);
         self.coordinator.wakeup_consumer()
     }
 }
@@ -69,11 +71,8 @@ impl<T: Send> Receiver<T> {
     /// Attempt to receive up to `batch_size` items.
     ///
     /// Invokes the provided `handler` closure for each item.
-    pub fn recv<H>(&self, batch_size: usize, handler: &H)
-    where
-        H: Fn(T),
-    {
-        if self.buffer.poll(batch_size, handler) == Idle {
+    pub fn recv(&self, buffer: &mut Vec<T>) {
+        if self.buffer.poll(buffer) == Idle {
             self.coordinator.consumer_wait();
         }
     }
@@ -82,11 +81,8 @@ impl<T: Send> Receiver<T> {
     ///
     /// This method blocks according to the configured consumer wait strategy.
     /// It is typically used in consumer loops.
-    pub fn blocking_recv<H>(&self, batch_size: usize, handler: &H)
-    where
-        H: Fn(T),
-    {
-        while self.buffer.poll(batch_size, handler) == Idle {
+    pub fn blocking_recv(&self, buffer: &mut Vec<T>) {
+        while self.buffer.poll(buffer) == Idle {
             self.coordinator.consumer_wait();
         }
     }
