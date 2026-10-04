@@ -1,25 +1,19 @@
+use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 
-/// Initial value for a [`Sequence`] when uninitialized.
 pub const INITIAL_VALUE: i64 = -1;
 
-/// A sequence counter for coordinating producers and consumers in concurrent data structures.
-///
-/// `Sequence` wraps an [`AtomicI64`] and provides atomic operations with
-/// configurable memory ordering. It is used to track **cursor positions**,
-/// **gating sequences**.
-///
-/// The struct is aligned to 64 bytes to avoid false sharing between threads.
 #[repr(align(64))]
+#[derive(Clone)]
 pub struct Sequence {
-    sequence: AtomicI64,
+    sequence: Arc<AtomicI64>,
 }
 
 impl Sequence {
     /// Create a new sequence initialized to `value`.
     pub fn new(value: i64) -> Self {
         Sequence {
-            sequence: AtomicI64::new(value),
+            sequence: Arc::new(AtomicI64::new(value)),
         }
     }
 

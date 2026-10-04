@@ -2,9 +2,11 @@
 [![Build](https://github.com/ryntric/channels-rs/actions/workflows/build.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/build.yml)
 [![Test](https://github.com/ryntric/channels-rs/actions/workflows/test.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/test.yml)
 [![Bench](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml/badge.svg)](https://github.com/ryntric/channels-rs/actions/workflows/bench.yml)
+![GitHub Repo stars](https://img.shields.io/github/stars/ryntric/channels-rs?style=flat&label=Stars)
 ![GitHub forks](https://img.shields.io/github/forks/ryntric/channels-rs?style=flat&label=Forks)
 ![GitHub contributors](https://img.shields.io/github/contributors/ryntric/channels-rs?style=flat&label=Contributors)
 [![Downloads](https://img.shields.io/crates/dr/channels-rs?style=flat&label=Downloads)](https://crates.io/crates/channels-rs)
+![Dependent repos (via libraries.io)](https://img.shields.io/librariesio/dependent-repos/cargo/channels-rs?label=Dependent%20Repos)
 [![Crates.io Version](https://img.shields.io/crates/v/channels-rs?label=Crates.io)](https://crates.io/crates/channels-rs)
 
 

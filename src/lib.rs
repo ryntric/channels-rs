@@ -1,10 +1,10 @@
-pub(crate) mod availability_buffer;
-pub mod channels;
-pub(crate) mod constants;
-pub mod coordinator;
-pub mod poller;
-pub mod prelude;
+pub(crate) mod availability;
+pub(crate) mod buffer;
 pub(crate) mod ring_buffer;
 pub(crate) mod sequence;
 pub(crate) mod sequencer;
-pub(crate) mod utils;
+
+pub mod channels;
+pub mod coordinator;
+pub mod poller;
+pub mod prelude;

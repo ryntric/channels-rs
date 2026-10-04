@@ -1,50 +1,20 @@
-use crate::availability_buffer::AvailabilityBuffer;
+use crate::availability::AvailabilityBuffer;
 use crate::coordinator::Coordinator;
 use crate::sequence::Sequence;
 
-/// Trait defining a sequencer for coordinating producers and consumers in a ring buffer.
-///
-/// A `Sequencer` tracks available sequences, gating sequences, and cursor positions.
-/// It supports both single-producer and multi-producer strategies, providing methods
-/// for claiming sequences, publishing cursor progress, and waiting for consumers.
-pub trait Sequencer: Send + Sync {
-    /// Claim the next sequence for a producer.
+pub(crate) trait Sequencer {
     fn next(&self, strategy: &Coordinator) -> i64 {
         self.next_n(1, strategy)
     }
 
-    /// Claim the next `n` sequences for batch production.
-    fn next_n(&self, n: usize, strategy: &Coordinator) -> i64;
+    fn next_n(&self, n: usize, coordinator: &Coordinator) -> i64;
 
-    /// Publish a sequence to indicate it is ready for consumption.
     fn publish_cursor_sequence(&self, sequence: i64);
 
-    /// Publish a range of sequences for batch production.
     fn publish_cursor_sequence_range(&self, low: i64, high: i64);
 
-    /// Update the gating sequence to indicate the consumer's progress.
     fn publish_gating_sequence(&self, sequence: i64);
 
-    /// Advances a gating sequence in a lock-free, multi-consumer context.
-    ///
-    /// This function attempts to move the provided `gating_sequence` forward to the
-    /// specified `sequence` value. It ensures that the sequence **never moves backward**,
-    /// even if multiple threads attempt to update it concurrently.
-    ///
-    /// The update is performed using a **compare-and-swap (CAS) loop**, which retries
-    /// until the sequence is successfully advanced or it is already greater than the
-    /// target value. The initial read uses relaxed ordering for efficiency, and subsequent
-    /// reads use acquire ordering to ensure proper memory visibility.
-    ///
-    /// # Parameters
-    /// - `gating_sequence`: The sequence to advance, typically representing a consumer's progress.
-    /// - `sequence`: The target sequence to advance to. The gating sequence will only move
-    ///   forward if this value is greater than its current value.
-    ///
-    /// # Guarantees
-    /// - The gating sequence is monotonic: it cannot decrease.
-    /// - Safe for concurrent calls by multiple threads.
-    /// - Lock-free: no mutexes are used. `
     fn advance_gating_sequence(&self, gating_sequence: &Sequence, sequence: i64) {
         let mut current: i64 = gating_sequence.get_relaxed();
         loop {
@@ -57,18 +27,12 @@ pub trait Sequencer: Send + Sync {
         }
     }
 
-    /// Determine the highest available sequence in a range for consumers.
     fn get_highest(&self, low: i64, high: i64) -> i64;
 
-    /// Get the current cursor sequence with Acquire ordering.
     fn get_cursor_sequence_acquire(&self) -> i64;
 
-    /// Get the current gating sequence with Relaxed ordering.
     fn get_gating_sequence_relaxed(&self) -> i64;
 
-    /// Wait until the consumer has processed sequences below `wrap_point`.
-    ///
-    /// Uses the provided `Coordinator` to apply the producer wait strategy.
     #[inline(always)]
     fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, coordinator: &Coordinator) -> i64 {
         let mut gating: i64;
@@ -83,26 +47,22 @@ pub trait Sequencer: Send + Sync {
     }
 }
 
-/// Sequencer for a **single producer** scenario.
-///
-/// Uses a local cursor and gating sequences to coordinate with consumers.
 pub struct SingleProducerSequencer {
     sequence: Sequence,
     cached: Sequence,
-    buffer_size: i64,
     cursor_sequence: Sequence,
     gating_sequence: Sequence,
+    capacity: i64,
 }
 
 impl SingleProducerSequencer {
-    /// Create a new single-producer sequencer with the specified buffer size.
-    pub fn new(buffer_size: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
             sequence: Sequence::default(),
             cached: Sequence::default(),
-            buffer_size: buffer_size as i64,
             cursor_sequence: Sequence::default(),
             gating_sequence: Sequence::default(),
+            capacity: capacity as i64,
         }
     }
 }
@@ -110,7 +70,7 @@ impl SingleProducerSequencer {
 impl Sequencer for SingleProducerSequencer {
     fn next_n(&self, n: usize, coordinator: &Coordinator) -> i64 {
         let next: i64 = self.sequence.get_relaxed() + n as i64;
-        let wrap_point: i64 = next - self.buffer_size;
+        let wrap_point: i64 = next - self.capacity;
 
         if wrap_point > self.cached.get_relaxed() {
             self.cached
@@ -146,12 +106,8 @@ impl Sequencer for SingleProducerSequencer {
     }
 }
 
-/// Sequencer for **multiple producers** scenario.
-///
-/// Coordinates multiple producers using an availability buffer to safely
-/// publish sequences without overwriting each other's data.
 pub struct MultiProducerSequencer {
-    buffer_size: i64,
+    capacity: i64,
     cached: Sequence,
     cursor_sequence: Sequence,
     gating_sequence: Sequence,
@@ -159,14 +115,13 @@ pub struct MultiProducerSequencer {
 }
 
 impl MultiProducerSequencer {
-    /// Create a new multi-producer sequencer with the specified buffer size.
-    pub fn new(buffer_size: usize) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            buffer_size: buffer_size as i64,
+            capacity: capacity as i64,
             cached: Sequence::default(),
             cursor_sequence: Sequence::default(),
             gating_sequence: Sequence::default(),
-            availability_buffer: AvailabilityBuffer::new(buffer_size),
+            availability_buffer: AvailabilityBuffer::new(capacity),
         }
     }
 }
@@ -175,7 +130,7 @@ impl Sequencer for MultiProducerSequencer {
     fn next_n(&self, n: usize, coordinator: &Coordinator) -> i64 {
         let n: i64 = n as i64;
         let next: i64 = self.cursor_sequence.fetch_add_volatile(n) + n;
-        let wrap_point: i64 = next - self.buffer_size;
+        let wrap_point: i64 = next - self.capacity;
 
         if wrap_point > self.cached.get_relaxed() {
             self.cached
@@ -209,7 +164,3 @@ impl Sequencer for MultiProducerSequencer {
         self.gating_sequence.get_relaxed()
     }
 }
-
-unsafe impl Send for MultiProducerSequencer {}
-
-unsafe impl Sync for MultiProducerSequencer {}
