@@ -45,13 +45,10 @@ impl<T> Buffer<T> {
         }
     }
 
-    pub fn with_default(capacity: usize) -> Self
-    where
-        T: Default,
-    {
+    pub fn with_default(capacity: usize, func: impl Fn() -> T) -> Self {
         let buffer = Self::new(capacity);
         for index in 0..buffer.capacity {
-            unsafe { buffer.insert(index, T::default()) }
+            unsafe { buffer.insert(index, func()) }
         }
         buffer
     }

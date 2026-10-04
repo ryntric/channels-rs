@@ -1,143 +1,33 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
-
-pub const INITIAL_VALUE: i64 = -1;
+use std::ops::Deref;
+use std::sync::atomic::AtomicI64;
 
 #[repr(align(64))]
-#[derive(Clone)]
 pub struct Sequence {
-    sequence: Arc<AtomicI64>,
+    sequence: AtomicI64,
 }
 
-impl Sequence {
-    /// Create a new sequence initialized to `value`.
-    pub fn new(value: i64) -> Self {
-        Sequence {
-            sequence: Arc::new(AtomicI64::new(value)),
-        }
-    }
+impl Deref for Sequence {
+    type Target = AtomicI64;
 
-    /// Get the current value with **Relaxed** memory ordering.
-    pub fn get_relaxed(&self) -> i64 {
-        self.sequence.load(Ordering::Relaxed)
-    }
-
-    /// Set the value with **Relaxed** memory ordering.
-    pub fn set_relaxed(&self, value: i64) {
-        self.sequence.store(value, Ordering::Relaxed);
-    }
-
-    /// Get the current value with **Acquire** memory ordering.
-    ///
-    /// Ensures that subsequent reads cannot be reordered before this load.
-    pub fn get_acquire(&self) -> i64 {
-        self.sequence.load(Ordering::Acquire)
-    }
-
-    /// Set the value with **Release** memory ordering.
-    ///
-    /// Ensures that previous writes cannot be reordered after this store
-    pub fn set_release(&self, value: i64) {
-        self.sequence.store(value, Ordering::Release);
-    }
-
-    /// Atomically add `value` to the current sequence using **AcqRel** ordering.
-    ///
-    /// Returns the previous value before addition.
-    pub fn fetch_add_volatile(&self, value: i64) -> i64 {
-        self.sequence.fetch_add(value, Ordering::AcqRel)
-    }
-
-    /// Perform a weak compare-and-swap operation with **AcqRel** for success
-    /// and **Relaxed** for failure.
-    ///
-    /// Returns `true` if the exchange was successful.
-    pub fn compare_and_exchange_weak_volatile(&self, current: i64, new: i64) -> bool {
-        self.sequence
-            .compare_exchange_weak(current, new, Ordering::AcqRel, Ordering::Relaxed)
-            .is_ok()
+    fn deref(&self) -> &Self::Target {
+        &self.sequence
     }
 }
 
 impl Default for Sequence {
-    /// Create a default sequence initialized to [`INITIAL_VALUE`].
     fn default() -> Self {
-        Sequence::new(INITIAL_VALUE)
+        Self::new()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::sequence::Sequence;
-    use loom::sync::Arc;
+impl Sequence {
+    pub const INITIAL_VALUE: i64 = -1;
+}
 
-    #[test]
-    pub fn test_default_sequence_value() {
-        let sequence = Sequence::default();
-        assert_eq!(sequence.get_relaxed(), -1);
-    }
-
-    #[test]
-    fn test_set_and_get_relaxed() {
-        loom::model(|| {
-            let sequence = Arc::new(Sequence::default());
-            let cloned = sequence.clone();
-
-            loom::thread::spawn(move || {
-                cloned.set_relaxed(1);
-            });
-
-            let value = sequence.get_relaxed();
-            assert!(value == -1 || value == 1);
-        })
-    }
-
-    #[test]
-    fn test_set_and_get_rls_acq() {
-        loom::model(|| {
-            let sequence = Arc::new(Sequence::default());
-            let cloned = sequence.clone();
-
-            loom::thread::spawn(move || {
-                cloned.set_release(1);
-            });
-
-            let value = sequence.get_acquire();
-            assert!(value == -1 || value == 1);
-        })
-    }
-
-    #[test]
-    fn test_fetch_add_volatile() {
-        loom::model(|| {
-            let sequence = Arc::new(Sequence::default());
-            let cloned = sequence.clone();
-
-            loom::thread::spawn(move || {
-                cloned.fetch_add_volatile(1);
-            });
-
-            let value = sequence.get_acquire();
-            assert!(value == -1 || value == 1);
-        })
-    }
-
-    #[test]
-    fn test_compare_and_exchange_weak_volatile() {
-        loom::model(|| {
-            let sequence = Arc::new(Sequence::default());
-            let cloned = sequence.clone();
-
-            loom::thread::spawn(move || {
-                loop {
-                    if cloned.compare_and_exchange_weak_volatile(-1, 1) {
-                        break;
-                    }
-                }
-            });
-
-            let value = sequence.get_acquire();
-            assert!(value == -1 || value == 1);
-        })
+impl Sequence {
+    pub const fn new() -> Self {
+        Self {
+            sequence: AtomicI64::new(Self::INITIAL_VALUE),
+        }
     }
 }

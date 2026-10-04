@@ -2,6 +2,7 @@ use crate::buffer::Buffer;
 use crate::poller::State::Idle;
 use crate::sequence::Sequence;
 use crate::sequencer::Sequencer;
+use std::sync::atomic::Ordering::Relaxed;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum State {
@@ -21,8 +22,7 @@ impl<T: Send, S: Sequencer> Poller<T, S> for SingleConsumerPoller {
         let limit = i64::try_from(sink.capacity()).unwrap_or(i64::MAX);
         let current = sequencer.get_gating_sequence_relaxed();
         let next: i64 = current + 1;
-        let available: i64 =
-            std::cmp::min(sequencer.get_cursor_sequence_acquire(), current + limit);
+        let available: i64 = std::cmp::min(sequencer.get_cursor_sequence(), current + limit);
 
         if next > available {
             return Idle;
@@ -50,44 +50,39 @@ pub(crate) struct MultiConsumerPoller {
 impl<T: Send, S: Sequencer> Poller<T, S> for MultiConsumerPoller {
     fn poll(&self, sequencer: &S, buffer: &Buffer<T>, sink: &mut Vec<T>) -> State {
         let limit = i64::try_from(sink.capacity()).unwrap_or(i64::MAX);
+        let mut current: i64 = self.sequence.load(Relaxed);
 
-        let mut current: i64;
-        let mut next: i64;
-        let mut available: i64;
-        let mut highest: i64;
-
-        loop {
-            current = self.sequence.get_acquire();
-            next = current + 1;
-            available = std::cmp::min(sequencer.get_cursor_sequence_acquire(), current + limit);
+        let (next, highest) = loop {
+            let next = current + 1;
+            let available = std::cmp::min(sequencer.get_cursor_sequence(), current + limit);
 
             if next > available {
                 return Idle;
             }
 
-            highest = sequencer.get_highest(next, available);
+            let highest = sequencer.get_highest(next, available);
+
             if next > highest {
                 return Idle;
             }
 
-            if self
+            match self
                 .sequence
-                .compare_and_exchange_weak_volatile(current, highest)
+                .compare_exchange_weak(current, highest, Relaxed, Relaxed)
             {
-                break;
+                Ok(_) => break (next, highest),
+                Err(actual) => current = actual,
             }
-        }
+        };
 
         for sequence in next..=highest {
             unsafe { sink.push(buffer.take(sequence)) }
         }
 
-        sequencer.publish_gating_sequence(highest);
+        sequencer.publish_gating_sequence_cas(highest);
         State::Processing
     }
 }
-
-unsafe impl Sync for MultiConsumerPoller {}
 
 // #[cfg(test)]
 // mod tests {

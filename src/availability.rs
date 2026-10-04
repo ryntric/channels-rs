@@ -1,15 +1,16 @@
 use crate::buffer::Buffer;
 use crate::sequence::Sequence;
-use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
+use std::sync::atomic::Ordering::{Acquire, Release};
 
 pub(crate) struct AvailabilityBuffer {
     shift: u32,
-    buffer: Arc<Buffer<Sequence>>,
+    buffer: Buffer<AtomicI64>,
 }
 
 impl AvailabilityBuffer {
     pub fn new(capacity: usize) -> Self {
-        let buffer = Arc::new(Buffer::with_default(capacity));
+        let buffer = Buffer::with_default(capacity, || AtomicI64::new(Sequence::INITIAL_VALUE));
         let shift = capacity.ilog2();
         Self { buffer, shift }
     }
@@ -22,7 +23,7 @@ impl AvailabilityBuffer {
     pub fn get_available(&self, low: i64, high: i64) -> i64 {
         for sequence in low..=high {
             let slot = unsafe { self.buffer.get(sequence) };
-            if slot.get_acquire() != self.flag(sequence) {
+            if slot.load(Acquire) != self.flag(sequence) {
                 return sequence - 1;
             }
         }
@@ -31,7 +32,7 @@ impl AvailabilityBuffer {
 
     pub fn set(&self, sequence: i64) {
         let slot = unsafe { self.buffer.get(sequence) };
-        slot.set_release(self.flag(sequence));
+        slot.store(self.flag(sequence), Release);
     }
 
     pub fn set_range(&self, low: i64, high: i64) {
