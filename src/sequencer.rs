@@ -1,6 +1,6 @@
 use crate::availability::AvailabilityBuffer;
 use crate::coordinator::Coordinator;
-use crate::sequence::Sequence;
+use crate::sequence::{LocalSequence, SharedSequence};
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 pub(crate) trait Sequencer {
@@ -18,7 +18,7 @@ pub(crate) trait Sequencer {
 
     fn publish_gating_sequence_cas(&self, sequence: i64);
 
-    fn advance_gating_sequence(&self, gating_sequence: &Sequence, sequence: i64) {
+    fn advance_gating_sequence(&self, gating_sequence: &SharedSequence, sequence: i64) {
         let mut current: i64 = gating_sequence.load(Relaxed);
 
         while sequence > current {
@@ -29,14 +29,19 @@ pub(crate) trait Sequencer {
         }
     }
 
-    fn get_highest(&self, low: i64, high: i64) -> i64;
+    fn get_cursor_highest(&self, low: i64, high: i64) -> i64;
 
     fn get_cursor_sequence(&self) -> i64;
 
     fn get_gating_sequence_relaxed(&self) -> i64;
 
     #[inline(always)]
-    fn wait(&self, gating_sequence: &Sequence, wrap_point: i64, coordinator: &Coordinator) -> i64 {
+    fn wait(
+        &self,
+        gating_sequence: &SharedSequence,
+        wrap_point: i64,
+        coordinator: &Coordinator,
+    ) -> i64 {
         let mut gating: i64;
         loop {
             gating = gating_sequence.load(Acquire);
@@ -50,20 +55,20 @@ pub(crate) trait Sequencer {
 }
 
 pub struct SingleProducerSequencer {
-    sequence: Sequence,
-    cached: Sequence,
-    cursor_sequence: Sequence,
-    gating_sequence: Sequence,
+    sequence: LocalSequence,
+    cached_gating: LocalSequence,
+    cursor_sequence: SharedSequence,
+    gating_sequence: SharedSequence,
     capacity: i64,
 }
 
 impl SingleProducerSequencer {
     pub fn new(capacity: usize) -> Self {
         Self {
-            sequence: Sequence::default(),
-            cached: Sequence::default(),
-            cursor_sequence: Sequence::default(),
-            gating_sequence: Sequence::default(),
+            sequence: LocalSequence::default(),
+            cached_gating: LocalSequence::default(),
+            cursor_sequence: SharedSequence::default(),
+            gating_sequence: SharedSequence::default(),
             capacity: capacity as i64,
         }
     }
@@ -71,17 +76,15 @@ impl SingleProducerSequencer {
 
 impl Sequencer for SingleProducerSequencer {
     fn next_n(&self, n: usize, coordinator: &Coordinator) -> i64 {
-        let next: i64 = self.sequence.load(Relaxed) + n as i64;
+        let next: i64 = self.sequence.get() + n as i64;
         let wrap_point: i64 = next - self.capacity;
 
-        if wrap_point > self.cached.load(Relaxed) {
-            self.cached.store(
-                self.wait(&self.gating_sequence, wrap_point, coordinator),
-                Relaxed,
-            );
+        if wrap_point > self.cached_gating.get() {
+            self.cached_gating
+                .set(self.wait(&self.gating_sequence, wrap_point, coordinator));
         }
 
-        self.sequence.store(next, Relaxed);
+        self.sequence.set(next);
         next
     }
 
@@ -101,7 +104,7 @@ impl Sequencer for SingleProducerSequencer {
         self.advance_gating_sequence(&self.gating_sequence, sequence);
     }
 
-    fn get_highest(&self, _: i64, high: i64) -> i64 {
+    fn get_cursor_highest(&self, _: i64, high: i64) -> i64 {
         high
     }
 
@@ -116,9 +119,9 @@ impl Sequencer for SingleProducerSequencer {
 
 pub struct MultiProducerSequencer {
     capacity: i64,
-    cached: Sequence,
-    cursor_sequence: Sequence,
-    gating_sequence: Sequence,
+    cached: SharedSequence,
+    cursor_sequence: SharedSequence,
+    gating_sequence: SharedSequence,
     availability_buffer: AvailabilityBuffer,
 }
 
@@ -126,9 +129,9 @@ impl MultiProducerSequencer {
     pub fn new(capacity: usize) -> Self {
         Self {
             capacity: capacity as i64,
-            cached: Sequence::default(),
-            cursor_sequence: Sequence::default(),
-            gating_sequence: Sequence::default(),
+            cached: SharedSequence::default(),
+            cursor_sequence: SharedSequence::default(),
+            gating_sequence: SharedSequence::default(),
             availability_buffer: AvailabilityBuffer::new(capacity),
         }
     }
@@ -166,7 +169,7 @@ impl Sequencer for MultiProducerSequencer {
         self.advance_gating_sequence(&self.gating_sequence, sequence);
     }
 
-    fn get_highest(&self, low: i64, high: i64) -> i64 {
+    fn get_cursor_highest(&self, low: i64, high: i64) -> i64 {
         self.availability_buffer.get_available(low, high)
     }
 

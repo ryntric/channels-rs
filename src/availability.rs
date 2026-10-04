@@ -1,5 +1,6 @@
 use crate::buffer::Buffer;
-use crate::sequence::Sequence;
+use crate::sequence::INITIAL_VALUE;
+
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering::{Acquire, Release};
 
@@ -10,7 +11,7 @@ pub(crate) struct AvailabilityBuffer {
 
 impl AvailabilityBuffer {
     pub fn new(capacity: usize) -> Self {
-        let buffer = Buffer::with_default(capacity, || AtomicI64::new(Sequence::INITIAL_VALUE));
+        let buffer = Buffer::with_default(capacity, || AtomicI64::new(INITIAL_VALUE));
         let shift = capacity.ilog2();
         Self { buffer, shift }
     }

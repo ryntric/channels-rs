@@ -1,6 +1,6 @@
 use crate::buffer::Buffer;
 use crate::poller::State::Idle;
-use crate::sequence::Sequence;
+use crate::sequence::{LocalSequence, SharedSequence};
 use crate::sequencer::Sequencer;
 use std::sync::atomic::Ordering::Relaxed;
 
@@ -15,20 +15,29 @@ pub(crate) trait Poller<T: Send, S: Sequencer>: Sized {
 }
 
 #[derive(Default)]
-pub(crate) struct SingleConsumerPoller {}
+pub(crate) struct SingleConsumerPoller {
+    sequence: LocalSequence,
+    cached_cursor: LocalSequence,
+}
 
 impl<T: Send, S: Sequencer> Poller<T, S> for SingleConsumerPoller {
     fn poll(&self, sequencer: &S, buffer: &Buffer<T>, sink: &mut Vec<T>) -> State {
         let limit = i64::try_from(sink.capacity()).unwrap_or(i64::MAX);
-        let current = sequencer.get_gating_sequence_relaxed();
-        let next: i64 = current + 1;
-        let available: i64 = std::cmp::min(sequencer.get_cursor_sequence(), current + limit);
+        let current = self.sequence.get();
+        let next = current + 1;
 
+        let mut cached = self.cached_cursor.get();
+        if next > cached {
+            cached = sequencer.get_cursor_sequence();
+            self.cached_cursor.set(cached);
+        }
+
+        let available = std::cmp::min(cached, current + limit);
         if next > available {
             return Idle;
         }
 
-        let highest: i64 = sequencer.get_highest(next, available);
+        let highest = sequencer.get_cursor_highest(next, available);
         if next > highest {
             return Idle;
         }
@@ -37,14 +46,16 @@ impl<T: Send, S: Sequencer> Poller<T, S> for SingleConsumerPoller {
             unsafe { sink.push(buffer.take(sequence)) }
         }
 
+        self.sequence.set(highest);
         sequencer.publish_gating_sequence(highest);
+
         State::Processing
     }
 }
 
 #[derive(Default)]
 pub(crate) struct MultiConsumerPoller {
-    sequence: Sequence,
+    sequence: SharedSequence,
 }
 
 impl<T: Send, S: Sequencer> Poller<T, S> for MultiConsumerPoller {
@@ -54,14 +65,13 @@ impl<T: Send, S: Sequencer> Poller<T, S> for MultiConsumerPoller {
 
         let (next, highest) = loop {
             let next = current + 1;
-            let available = std::cmp::min(sequencer.get_cursor_sequence(), current + limit);
 
+            let available = std::cmp::min(sequencer.get_cursor_sequence(), current + limit);
             if next > available {
                 return Idle;
             }
 
-            let highest = sequencer.get_highest(next, available);
-
+            let highest = sequencer.get_cursor_highest(next, available);
             if next > highest {
                 return Idle;
             }

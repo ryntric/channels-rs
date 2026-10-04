@@ -1,33 +1,55 @@
+use std::cell::Cell;
 use std::ops::Deref;
 use std::sync::atomic::AtomicI64;
 
-#[repr(align(64))]
-pub struct Sequence {
-    sequence: AtomicI64,
+pub(crate) const INITIAL_VALUE: i64 = -1;
+
+pub(crate) struct LocalSequence {
+    inner: Cell<i64>,
 }
 
-impl Deref for Sequence {
+impl LocalSequence {
+    #[inline(always)]
+    pub fn fetch_sub(&self, value: i64) -> i64 {
+        let current = self.get();
+        self.set(current - value);
+        current
+    }
+}
+
+impl Deref for LocalSequence {
+    type Target = Cell<i64>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl Default for LocalSequence {
+    fn default() -> Self {
+        Self {
+            inner: Cell::new(INITIAL_VALUE),
+        }
+    }
+}
+
+#[repr(align(64))]
+pub struct SharedSequence {
+    inner: AtomicI64,
+}
+
+impl Deref for SharedSequence {
     type Target = AtomicI64;
 
     fn deref(&self) -> &Self::Target {
-        &self.sequence
+        &self.inner
     }
 }
 
-impl Default for Sequence {
+impl Default for SharedSequence {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Sequence {
-    pub const INITIAL_VALUE: i64 = -1;
-}
-
-impl Sequence {
-    pub const fn new() -> Self {
         Self {
-            sequence: AtomicI64::new(Self::INITIAL_VALUE),
+            inner: AtomicI64::new(INITIAL_VALUE),
         }
     }
 }
