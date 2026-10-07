@@ -8,15 +8,6 @@ pub(crate) struct LocalSequence {
     inner: Cell<i64>,
 }
 
-impl LocalSequence {
-    #[inline(always)]
-    pub fn fetch_sub(&self, value: i64) -> i64 {
-        let current = self.get();
-        self.set(current - value);
-        current
-    }
-}
-
 impl Deref for LocalSequence {
     type Target = Cell<i64>;
 

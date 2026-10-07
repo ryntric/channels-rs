@@ -48,7 +48,7 @@ impl<T> Buffer<T> {
     pub fn with_default(capacity: usize, func: impl Fn() -> T) -> Self {
         let buffer = Self::new(capacity);
         for index in 0..buffer.capacity {
-            unsafe { buffer.insert(index, func()) }
+            unsafe { buffer.write(index, func()) }
         }
         buffer
     }
@@ -67,7 +67,7 @@ impl<T> Buffer<T> {
         unsafe { (*self.ptr.as_ptr().add(index)).assume_init_read() }
     }
 
-    pub unsafe fn insert(&self, sequence: i64, value: T) {
+    pub unsafe fn write(&self, sequence: i64, value: T) {
         let index = self.wrap_index(sequence);
         unsafe { self.ptr.as_ptr().add(index).write(MaybeUninit::new(value)) }
     }
