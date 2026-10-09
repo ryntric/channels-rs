@@ -4,6 +4,7 @@ use std::sync::atomic::AtomicI64;
 
 pub(crate) const INITIAL_VALUE: i64 = -1;
 
+#[repr(align(64))]
 pub(crate) struct LocalSequence {
     inner: Cell<i64>,
 }

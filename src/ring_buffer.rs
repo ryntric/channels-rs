@@ -22,4 +22,8 @@ impl<T> RingBuffer<T> {
     pub fn take(&self, sequence: i64) -> T {
         unsafe { self.buffer.take(sequence) }
     }
+
+    pub fn clear(&self, low: i64, high: i64) {
+        unsafe { self.buffer.clear(low, high) }
+    }
 }

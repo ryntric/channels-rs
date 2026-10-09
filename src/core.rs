@@ -7,10 +7,24 @@ use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<(), T>;
 
-pub(crate) struct ChannelCore<T, P, C> {
+pub(crate) struct ChannelCore<T, P, C>
+where
+    P: ProducerCursor,
+    C: ConsumerCursor,
+{
     producer_cursor: P,
     consumer_cursor: C,
     ring_buffer: RingBuffer<T>,
+}
+
+impl<T, P, C> Drop for ChannelCore<T, P, C>
+where
+    P: ProducerCursor,
+    C: ConsumerCursor,
+{
+    fn drop(&mut self) {
+        // self.ring_buffer.clear(self.consumer_cursor.)
+    }
 }
 
 impl<T, P, C> ChannelCore<T, P, C>
@@ -82,19 +96,27 @@ where
     }
 }
 
-pub(crate) struct Sender<T, K, R, P, C> {
+pub(crate) struct GenericSender<T, K, R, P, C>
+where
+    P: ProducerCursor,
+    C: ConsumerCursor,
+{
     cache: K,
     reservation: R,
     core: Arc<ChannelCore<T, P, C>>,
 }
 
-pub(crate) struct Receiver<T, K, R, P, C> {
+pub(crate) struct GenericReceiver<T, K, R, P, C>
+where
+    P: ProducerCursor,
+    C: ConsumerCursor,
+{
     cache: K,
     reservation: R,
     core: Arc<ChannelCore<T, P, C>>,
 }
 
-impl<T, K, R, P, C> ClaimEndpoint for Sender<T, K, R, P, C>
+impl<T, K, R, P, C> ClaimEndpoint for GenericSender<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
@@ -126,7 +148,7 @@ where
     }
 }
 
-impl<T, K, R, P, C> ClaimEndpoint for Receiver<T, K, R, P, C>
+impl<T, K, R, P, C> ClaimEndpoint for GenericReceiver<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
@@ -158,13 +180,26 @@ where
     }
 }
 
-impl<T, K, R, P, C> Sender<T, K, R, P, C>
+impl<T, K, R, P, C> GenericSender<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
     P: ProducerCursor,
     C: ConsumerCursor,
 {
+    pub fn new(cache: K, reservation: R, core: Arc<ChannelCore<T, P, C>>) -> Self {
+        Self {
+            cache,
+            reservation,
+            core,
+        }
+    }
+
+    #[inline(always)]
+    pub fn core(&self) -> &Arc<ChannelCore<T, P, C>> {
+        &self.core
+    }
+
     #[inline(always)]
     pub fn try_push(&self, value: T) -> Result<T> {
         let Some(sequence) = self.try_claim_n(1) else {
@@ -225,7 +260,7 @@ where
     }
 
     #[inline]
-    pub fn try_push_array(&self, items: Box<[T]>) -> Result<Box<[T]>> {
+    pub fn try_push_boxed_slice(&self, items: Box<[T]>) -> Result<Box<[T]>> {
         let length = items.len() as i64;
         self.core.assert_claim_size(length);
 
@@ -246,7 +281,41 @@ where
     }
 
     #[inline]
-    pub fn push_array(&self, mut items: Box<[T]>) {
+    pub fn try_push_array<const N: usize>(&self, items: [T; N]) -> Result<[T; N]> {
+        let length = items.len() as i64;
+        self.core.assert_claim_size(length);
+
+        let Some(sequence) = self.try_claim_n(length) else {
+            return Err(items);
+        };
+
+        let high = sequence;
+        let low = high - (length - 1);
+
+        for (sequence, element) in (low..=high).zip(items) {
+            self.core.write(sequence, element);
+        }
+
+        self.core.publish_range(low, high);
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn push_boxed_slice(&self, mut items: Box<[T]>) {
+        loop {
+            match self.try_push_boxed_slice(items) {
+                Ok(()) => return,
+                Err(returned) => {
+                    items = returned;
+                    std::hint::spin_loop();
+                }
+            }
+        }
+    }
+
+    #[inline]
+    pub fn push_array<const N: usize>(&self, mut items: [T; N]) {
         loop {
             match self.try_push_array(items) {
                 Ok(()) => return,
@@ -259,13 +328,26 @@ where
     }
 }
 
-impl<T, K, R, P, C> Receiver<T, K, R, P, C>
+impl<T, K, R, P, C> GenericReceiver<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
     P: ProducerCursor,
     C: ConsumerCursor,
 {
+    pub fn new(cache: K, reservation: R, core: Arc<ChannelCore<T, P, C>>) -> Self {
+        Self {
+            cache,
+            reservation,
+            core,
+        }
+    }
+
+    #[inline(always)]
+    pub fn core(&self) -> &Arc<ChannelCore<T, P, C>> {
+        &self.core
+    }
+
     #[inline]
     pub fn try_take(&self) -> Option<T> {
         let sequence = self.try_claim_n(1)?;
@@ -288,21 +370,22 @@ where
     pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<()> {
         let length = (buffer.capacity() - buffer.len()) as i64;
         self.core.assert_claim_size(length);
-        
-        let available = self.try_claim_n(length)?;
 
-        let high = std::cmp::min(, );
+        let high = self.try_claim_n(length)?;
         let low = high - (length - 1);
+
         for i in low..=high {
             buffer.push(self.core.take(i));
         }
+
         self.core.complete_range(low, high);
+
         Some(())
     }
 
     #[inline]
     pub fn take_batch(&self, buffer: &mut Vec<T>) {
-        while let None = self.try_take_batch(buffer) {
+        while self.try_take_batch(buffer).is_none() {
             std::hint::spin_loop();
         }
     }

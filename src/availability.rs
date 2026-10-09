@@ -43,6 +43,12 @@ impl AvailabilityBuffer {
     }
 }
 
+impl Drop for AvailabilityBuffer {
+    fn drop(&mut self) {
+        unsafe { self.buffer.clear(0, self.buffer.capacity() - 1) }
+    }
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use crate::availability_buffer::AvailabilityBuffer;

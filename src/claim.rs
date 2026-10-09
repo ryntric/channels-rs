@@ -51,7 +51,8 @@ pub(crate) trait ClaimEndpoint {
             cache.set_cached(available);
         }
 
-        match self.reservation().try_reserve(current, next) {
+        let reservation = self.reservation();
+        match reservation.try_reserve(current, next) {
             Ok(sequence) => ClaimResult::Claimed(sequence),
             Err(actual) => ClaimResult::Contended(actual),
         }
@@ -59,7 +60,8 @@ pub(crate) trait ClaimEndpoint {
 
     #[inline(always)]
     fn try_claim_n(&self, n: i64) -> Option<i64> {
-        let mut current = self.reservation().reserved();
+        let reservation = self.reservation();
+        let mut current = reservation.reserved();
 
         loop {
             match self.try_claim(n, current) {
