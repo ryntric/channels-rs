@@ -5,42 +5,44 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Copy, Clone, Default)]
 struct Event {
+    #[allow(dead_code)]
     number: i32,
 }
 
 fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
-    let (tx, rx) = spmc::<Event>(
-        8192,
-        ProducerWaitStrategyKind::Spinning,
-        ConsumerWaitStrategyKind::Spinning,
-    );
+    let (tx, rx) = spsc::<Event>(8192);
     let is_running = Arc::new(AtomicBool::new(true));
 
-    let rx_clone = rx.clone();
     let is_running_clone = is_running.clone();
 
-    std::thread::spawn(move || {
-        let mut buffer = Vec::with_capacity(1024);
-
-        while is_running_clone.load(Ordering::Acquire) {
-            rx_clone.blocking_recv(&mut buffer);
-            std::hint::black_box(&buffer);
-            buffer.clear();
+    let handle = std::thread::spawn(move || {
+        while is_running_clone.load(Ordering::Relaxed) {
+            if let Some(lease) = rx.try_lease(1) {
+                for value in lease {
+                    std::hint::black_box(value);
+                }
+            } else {
+                std::hint::spin_loop();
+            }
         }
     });
-
-    let event: Event = Event::default();
 
     let mut group = c.benchmark_group("spsc/single");
     group.throughput(Throughput::Elements(1));
     group.bench_function("push", |b| {
+        let mut sequence = 0i32;
         b.iter(|| {
-            tx.send(event);
+            tx.push(Event {
+                number: sequence.wrapping_add(1),
+            });
+            sequence = sequence.wrapping_add(1);
         });
     });
 
     group.finish();
-    is_running.store(false, Ordering::Release);
+    is_running.store(false, Ordering::Relaxed);
+
+    handle.join().expect("consumer thread panicked");
 }
 
 criterion_group!(benches, bench_ring_buffer_offer_poll);

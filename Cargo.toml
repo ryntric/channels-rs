@@ -5,10 +5,23 @@ edition = "2024"
 authors = ["ryntric"]
 license = "MIT"
 description = "It is low latency channels for inter-thread messaging"
+keywords = [
+    "channel",
+    "lock-free",
+    "low-latency",
+    "spsc",
+    "spmc"
+]
+categories = ["concurrency", "data-structures"]
+
+[features]
+default = ["std"]
+std = []
+emplace = []
 
 [dev-dependencies]
-criterion = { version = "0.7.0" }
-loom = { version = "0.7.2" }
+criterion = { version = "0.8.2" }
+loom = { version = "0.7.3" }
 
 [[bench]]
 name = "single_producer_multi_consumer_batch_item_bench"
@@ -25,5 +38,13 @@ harness = false
 [[bench]]
 name = "single_producer_single_consumer_single_item_bench"
 harness = false
-[dependencies]
-log = "0.4.28"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+debug = "line-tables-only"
+

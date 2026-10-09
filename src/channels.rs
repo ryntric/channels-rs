@@ -1,35 +1,47 @@
-use crate::coordinator::{ConsumerWaitStrategyKind, Coordinator, ProducerWaitStrategyKind};
-use crate::poller::{MultiConsumerPoller, SingleConsumerPoller, State};
+use crate::cache::LocalCache;
+use crate::claim::ClaimEndpoint;
+use crate::core::Result;
+use crate::core::{ChannelCore, GenericReceiver, GenericSender};
+use crate::cursor::{DirectCursor, TrackedCursor};
+use crate::lease::{ReadLease, WriteLease};
+use crate::reservation::{LocalReservation, SharedReservation};
 use crate::ring_buffer::RingBuffer;
-use crate::sequencer::{MultiProducerSequencer, SingleProducerSequencer};
 
-use std::sync::Arc;
+use alloc::sync::Arc;
 
 macro_rules! sender {
     (
-        $(#[$meta:meta])*
-        $name:ident, $sequencer:ty, $poller:ty $(,)?
+        $name:ident, $K:ty, $R:ty, $P:ty, $C:ty
     ) => {
-        $(#[$meta])*
-        pub struct $name<T: Send> {
-            ring_buffer: Arc<RingBuffer<T, $sequencer, $poller>>,
-            coordinator: Arc<Coordinator>,
+        pub struct $name<T> {
+            inner: GenericSender<T, $K, $R, $P, $C>,
         }
 
-        impl<T: Send> Sender<T> for $name<T> {
-            fn send(&self, value: T) {
-                self.ring_buffer.push(value, &self.coordinator);
-                self.coordinator.wakeup_consumer();
+        impl<T> $name<T> {
+            fn new(cache: $K, reservation: $R, core: Arc<ChannelCore<T, $P, $C>>) -> Self {
+                Self {
+                    inner: GenericSender::new(cache, reservation, core),
+                }
             }
 
-            fn send_v(&self, items: Vec<T>) {
-                self.ring_buffer.push_v(items, &self.coordinator);
-                self.coordinator.wakeup_consumer();
+            #[inline(always)]
+            pub fn try_push(&self, value: T) -> Result<T> {
+                self.inner.try_push(value)
             }
 
-            fn send_a<const N: usize>(&self, items: [T; N]) {
-                self.ring_buffer.push_a(items, &self.coordinator);
-                self.coordinator.wakeup_consumer();
+            #[inline(always)]
+            pub fn push(&self, value: T) {
+                self.inner.push(value)
+            }
+
+            #[inline(always)]
+            pub fn try_lease(&self, n: usize) -> Option<impl WriteLease<T>> {
+                self.inner.try_lease(n)
+            }
+
+            #[inline(always)]
+            pub fn lease(&self, n: usize) -> impl WriteLease<T> {
+                self.inner.lease(n)
             }
         }
     };
@@ -37,174 +49,182 @@ macro_rules! sender {
 
 macro_rules! receiver {
     (
-       $(#[$meta:meta])*
-       $name:ident, $sequencer:ty, $poller:ty $(,)?
+        $name:ident, $K:ty, $R:ty, $P:ty, $C:ty
     ) => {
-        $(#[$meta])*
-        pub struct $name<T: Send> {
-            ring_buffer: Arc<RingBuffer<T, $sequencer, $poller>>,
-            coordinator: Arc<Coordinator>,
+        pub struct $name<T> {
+            inner: GenericReceiver<T, $K, $R, $P, $C>,
         }
-
-        impl<T: Send> Receiver<T> for $name<T> {
-            fn recv(&self, buffer: &mut Vec<T>) {
-                if self.ring_buffer.poll(buffer) == State::Idle {
-                    self.coordinator.consumer_wait();
+        impl<T> $name<T> {
+            fn new(cache: $K, reservation: $R, core: Arc<ChannelCore<T, $P, $C>>) -> Self {
+                Self {
+                    inner: GenericReceiver::new(cache, reservation, core),
                 }
             }
 
-            fn blocking_recv(&self, buffer: &mut Vec<T>) {
-                while self.ring_buffer.poll(buffer) == State::Idle  {
-                    self.coordinator.consumer_wait();
-                }
+            #[inline(always)]
+            pub fn try_take(&self) -> Option<T> {
+                self.inner.try_take()
+            }
+
+            #[inline(always)]
+            pub fn take(&self) -> T {
+                self.inner.take()
+            }
+
+            #[inline(always)]
+            pub fn try_lease(&self, n: usize) -> Option<impl ReadLease<T>> {
+                self.inner.try_lease(n)
+            }
+
+            #[inline(always)]
+            pub fn lease(&self, n: usize) -> impl ReadLease<T> {
+                self.inner.lease(n)
             }
         }
     };
 }
 
 macro_rules! impl_clone {
-    ($($name:ident),+ $(,)?) => {
-        $(
-            impl<T: Send> Clone for $name<T> {
-                fn clone(&self) -> Self {
-                    Self {
-                        ring_buffer: Arc::clone(&self.ring_buffer),
-                        coordinator: Arc::clone(&self.coordinator),
-                    }
-                }
+    ($name:ident) => {
+        impl<T> Clone for $name<T> {
+            fn clone(&self) -> Self {
+                Self::new(
+                    self.inner.cache().clone(),
+                    self.inner.reservation().clone(),
+                    Arc::clone(self.inner.core()),
+                )
             }
-        )+
-    };
-}
-
-macro_rules! channel_factory {
-    (
-        $name:ident,
-        $sender:ident,
-        $receiver:ident,
-        $sequencer:ty,
-        $poller:ty $(,)?
-    ) => {
-        pub fn $name<T: Send>(
-            capacity: usize,
-            pw: ProducerWaitStrategyKind,
-            cw: ConsumerWaitStrategyKind,
-        ) -> ($sender<T>, $receiver<T>) {
-            let coordinator = Arc::new(Coordinator::new(pw, cw));
-            let ring_buffer = Arc::new(RingBuffer::new(
-                capacity,
-                <$sequencer>::new(capacity),
-                <$poller>::default(),
-            ));
-
-            let sender = $sender {
-                ring_buffer: Arc::clone(&ring_buffer),
-                coordinator: Arc::clone(&coordinator),
-            };
-            let receiver = $receiver {
-                ring_buffer,
-                coordinator,
-            };
-
-            (sender, receiver)
         }
     };
 }
 
-pub trait Sender<T: Send>: Sized {
-    fn send(&self, value: T);
+sender!(
+    SpscSender,
+    LocalCache,
+    LocalReservation,
+    DirectCursor,
+    DirectCursor
+);
+sender!(
+    SpmcSender,
+    LocalCache,
+    LocalReservation,
+    DirectCursor,
+    TrackedCursor
+);
+sender!(
+    MpscSender,
+    LocalCache,
+    SharedReservation,
+    TrackedCursor,
+    DirectCursor
+);
+sender!(
+    MpmcSender,
+    LocalCache,
+    SharedReservation,
+    TrackedCursor,
+    TrackedCursor
+);
 
-    fn send_v(&self, items: Vec<T>);
+receiver!(
+    SpscReceiver,
+    LocalCache,
+    LocalReservation,
+    DirectCursor,
+    DirectCursor
+);
+receiver!(
+    SpmcReceiver,
+    LocalCache,
+    SharedReservation,
+    DirectCursor,
+    TrackedCursor
+);
+receiver!(
+    MpscReceiver,
+    LocalCache,
+    LocalReservation,
+    TrackedCursor,
+    DirectCursor
+);
+receiver!(
+    MpmcReceiver,
+    LocalCache,
+    SharedReservation,
+    TrackedCursor,
+    TrackedCursor
+);
 
-    fn send_a<const N: usize>(&self, items: [T; N]);
+impl_clone!(SpmcReceiver);
+impl_clone!(MpscSender);
+impl_clone!(MpmcSender);
+impl_clone!(MpmcReceiver);
+
+pub fn spsc<T>(capacity: usize) -> (SpscSender<T>, SpscReceiver<T>) {
+    let core = Arc::new(ChannelCore::new(
+        RingBuffer::new(capacity),
+        DirectCursor::default(),
+        DirectCursor::default(),
+    ));
+    let sender = SpscSender::new(
+        LocalCache::default(),
+        LocalReservation::default(),
+        Arc::clone(&core),
+    );
+    let receiver = SpscReceiver::new(LocalCache::default(), LocalReservation::default(), core);
+
+    (sender, receiver)
 }
 
-pub trait Receiver<T: Send>: Sized {
-    fn recv(&self, buffer: &mut Vec<T>);
+pub fn spmc<T>(capacity: usize) -> (SpmcSender<T>, SpmcReceiver<T>) {
+    let consumer_reservation = SharedReservation::default();
+    let core = Arc::new(ChannelCore::new(
+        RingBuffer::new(capacity),
+        DirectCursor::default(),
+        TrackedCursor::new(capacity, consumer_reservation.clone()),
+    ));
+    let sender = SpmcSender::new(
+        LocalCache::default(),
+        LocalReservation::default(),
+        Arc::clone(&core),
+    );
+    let receiver = SpmcReceiver::new(LocalCache::default(), consumer_reservation, core);
 
-    fn blocking_recv(&self, buffer: &mut Vec<T>);
+    (sender, receiver)
 }
 
-sender!(
-    #[must_use]
-    SpscSender,
-    SingleProducerSequencer,
-    SingleConsumerPoller
-);
-sender!(
-    #[must_use]
-    SpmcSender,
-    SingleProducerSequencer,
-    MultiConsumerPoller
-);
-sender!(
-    #[must_use]
-    MpscSender,
-    MultiProducerSequencer,
-    SingleConsumerPoller
-);
-sender!(
-    #[must_use]
-    MpmcSender,
-    MultiProducerSequencer,
-    MultiConsumerPoller
-);
+pub fn mpsc<T>(capacity: usize) -> (MpscSender<T>, MpscReceiver<T>) {
+    let producer_reservation = SharedReservation::default();
+    let core = Arc::new(ChannelCore::new(
+        RingBuffer::new(capacity),
+        TrackedCursor::new(capacity, producer_reservation.clone()),
+        DirectCursor::default(),
+    ));
+    let sender = MpscSender::new(
+        LocalCache::default(),
+        producer_reservation,
+        Arc::clone(&core),
+    );
+    let receiver = MpscReceiver::new(LocalCache::default(), LocalReservation::default(), core);
 
-receiver!(
-    #[must_use]
-    SpscReceiver,
-    SingleProducerSequencer,
-    SingleConsumerPoller
-);
-receiver!(
-    #[must_use]
-    SpmcReceiver,
-    SingleProducerSequencer,
-    MultiConsumerPoller
-);
-receiver!(
-    #[must_use]
-    MpscReceiver,
-    MultiProducerSequencer,
-    SingleConsumerPoller
-);
-receiver!(
-    #[must_use]
-    MpmcReceiver,
-    MultiProducerSequencer,
-    MultiConsumerPoller
-);
+    (sender, receiver)
+}
 
-impl_clone!(MpscSender, MpmcSender, SpmcReceiver, MpmcReceiver);
+pub fn mpmc<T>(capacity: usize) -> (MpmcSender<T>, MpmcReceiver<T>) {
+    let producer_reservation = SharedReservation::default();
+    let consumer_reservation = SharedReservation::default();
+    let core = Arc::new(ChannelCore::new(
+        RingBuffer::new(capacity),
+        TrackedCursor::new(capacity, producer_reservation.clone()),
+        TrackedCursor::new(capacity, consumer_reservation.clone()),
+    ));
+    let sender = MpmcSender::new(
+        LocalCache::default(),
+        producer_reservation,
+        Arc::clone(&core),
+    );
+    let receiver = MpmcReceiver::new(LocalCache::default(), consumer_reservation, core);
 
-channel_factory!(
-    spsc,
-    SpscSender,
-    SpscReceiver,
-    SingleProducerSequencer,
-    SingleConsumerPoller,
-);
-
-channel_factory!(
-    spmc,
-    SpmcSender,
-    SpmcReceiver,
-    SingleProducerSequencer,
-    MultiConsumerPoller,
-);
-
-channel_factory!(
-    mpsc,
-    MpscSender,
-    MpscReceiver,
-    MultiProducerSequencer,
-    SingleConsumerPoller,
-);
-
-channel_factory!(
-    mpmc,
-    MpmcSender,
-    MpmcReceiver,
-    MultiProducerSequencer,
-    MultiConsumerPoller,
-);
+    (sender, receiver)
+}

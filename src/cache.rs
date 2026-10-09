@@ -1,18 +1,19 @@
 use crate::sequence::LocalSequence;
 
 pub(crate) trait Cache {
-    fn cached(&self) -> i64;
+    fn value(&self) -> i64;
 
-    fn set_cached(&self, value: i64);
+    fn set_value(&self, value: i64);
 }
 
 #[derive(Default)]
+#[repr(transparent)]
 pub(crate) struct LocalCache {
     inner: LocalSequence,
 }
 
 impl Clone for LocalCache {
-    #[inline]
+    #[inline(always)]
     fn clone(&self) -> Self {
         Self::default()
     }
@@ -20,12 +21,12 @@ impl Clone for LocalCache {
 
 impl Cache for LocalCache {
     #[inline(always)]
-    fn cached(&self) -> i64 {
+    fn value(&self) -> i64 {
         self.inner.get()
     }
 
     #[inline(always)]
-    fn set_cached(&self, value: i64) {
+    fn set_value(&self, value: i64) {
         self.inner.set(value)
     }
 }

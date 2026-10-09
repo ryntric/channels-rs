@@ -1,13 +1,22 @@
 use crate::cache::Cache;
-use crate::claim::ClaimEndpoint;
-use crate::cursor::{ConsumerCursor, ProducerCursor};
+use crate::claim::ClaimResult::Unavailable;
+use crate::claim::{AvailabilityResult, ClaimEndpoint, ClaimResult};
+use crate::cursor::{ConsumerCursor, LogicalRange, ProducerCursor};
+use crate::lease::{GenericReadLease, GenericWriteLease, ReadLease, WriteLease};
 use crate::reservation::Reservation;
 use crate::ring_buffer::RingBuffer;
-use std::sync::Arc;
 
-pub type Result<T> = std::result::Result<(), T>;
+use crate::buffer::RawParts;
+use alloc::sync::Arc;
+use core::mem::MaybeUninit;
 
-pub(crate) struct ChannelCore<T, P, C> {
+pub type Result<T> = core::result::Result<(), T>;
+
+pub(crate) struct ChannelCore<T, P, C>
+where
+    P: ProducerCursor,
+    C: ConsumerCursor,
+{
     producer_cursor: P,
     consumer_cursor: C,
     ring_buffer: RingBuffer<T>,
@@ -37,13 +46,34 @@ where
     }
 
     #[inline(always)]
-    pub fn take(&self, sequence: i64) -> T {
-        self.ring_buffer.take(sequence)
+    pub unsafe fn take(&self, sequence: i64) -> T {
+        unsafe { self.ring_buffer.take(sequence) }
     }
 
     #[inline(always)]
-    pub fn write(&self, sequence: i64, value: T) {
-        self.ring_buffer.write(sequence, value);
+    pub unsafe fn write(&self, sequence: i64, value: T) {
+        unsafe { self.ring_buffer.write(sequence, value) }
+    }
+
+    #[inline(always)]
+    pub unsafe fn raw_parts<'a>(&self, range: &LogicalRange) -> RawParts<'a, T> {
+        unsafe { self.ring_buffer.raw_parts(range) }
+    }
+
+    #[cfg(feature = "emplace")]
+    #[inline(always)]
+    pub unsafe fn get_ptr(&self, sequence: i64) -> *mut MaybeUninit<T> {
+        unsafe { self.ring_buffer.get_ptr(sequence) }
+    }
+
+    #[inline(always)]
+    pub fn read_lease(&self, range: LogicalRange) -> impl ReadLease<T> {
+        GenericReadLease::new(self, range, unsafe { self.raw_parts(&range) })
+    }
+
+    #[inline(always)]
+    pub fn write_lease(&self, range: LogicalRange) -> impl WriteLease<T> {
+        GenericWriteLease::new(self, range, unsafe { self.raw_parts(&range) })
     }
 
     #[inline(always)]
@@ -62,39 +92,47 @@ where
     }
 
     #[inline(always)]
-    pub fn publish(&self, sequence: i64) {
-        self.producer_cursor.publish(sequence);
+    pub fn publish(&self, range: LogicalRange) {
+        self.producer_cursor.publish(range);
     }
 
     #[inline(always)]
-    pub fn publish_range(&self, low: i64, high: i64) {
-        self.producer_cursor.publish_range(low, high);
+    pub fn publish_range(&self, range: LogicalRange) {
+        self.producer_cursor.publish_range(range);
     }
 
     #[inline(always)]
-    pub fn complete(&self, sequence: i64) {
-        self.consumer_cursor.complete(sequence);
+    pub fn complete(&self, range: LogicalRange) {
+        self.consumer_cursor.complete(range);
     }
 
     #[inline(always)]
-    pub fn complete_range(&self, low: i64, high: i64) {
-        self.consumer_cursor.complete_range(low, high);
+    pub fn complete_range(&self, range: LogicalRange) {
+        self.consumer_cursor.complete_range(range);
     }
 }
 
-pub(crate) struct Sender<T, K, R, P, C> {
+pub(crate) struct GenericSender<T, K, R, P, C>
+where
+    P: ProducerCursor,
+    C: ConsumerCursor,
+{
     cache: K,
     reservation: R,
     core: Arc<ChannelCore<T, P, C>>,
 }
 
-pub(crate) struct Receiver<T, K, R, P, C> {
+pub(crate) struct GenericReceiver<T, K, R, P, C>
+where
+    P: ProducerCursor,
+    C: ConsumerCursor,
+{
     cache: K,
     reservation: R,
     core: Arc<ChannelCore<T, P, C>>,
 }
 
-impl<T, K, R, P, C> ClaimEndpoint for Sender<T, K, R, P, C>
+impl<T, K, R, P, C> ClaimEndpoint for GenericSender<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
@@ -121,12 +159,21 @@ where
     }
 
     #[inline(always)]
-    fn required(&self, next: i64) -> i64 {
-        next - self.core.capacity()
+    fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
+        let next = current + n;
+        let required = next - self.core.capacity();
+        if self.try_ensure_availability(required, next) == AvailabilityResult::Unavailable {
+            return Unavailable;
+        }
+
+        match self.reservation().try_reserve(current, next) {
+            Ok(sequence) => ClaimResult::Claimed(sequence),
+            Err(actual) => ClaimResult::Contended(actual),
+        }
     }
 }
 
-impl<T, K, R, P, C> ClaimEndpoint for Receiver<T, K, R, P, C>
+impl<T, K, R, P, C> ClaimEndpoint for GenericReceiver<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
@@ -153,157 +200,183 @@ where
     }
 
     #[inline(always)]
-    fn required(&self, next: i64) -> i64 {
-        next
+    fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
+        if self.try_ensure_availability(current + 1, current + n) == AvailabilityResult::Unavailable
+        {
+            return ClaimResult::Unavailable;
+        }
+
+        let cache = self.cache();
+        let next = core::cmp::min(current + n, cache.value());
+
+        match self.reservation().try_reserve(current, next) {
+            Ok(range) => ClaimResult::Claimed(range),
+            Err(actual) => ClaimResult::Contended(actual),
+        }
     }
 }
 
-impl<T, K, R, P, C> Sender<T, K, R, P, C>
+impl<T, K, R, P, C> GenericSender<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
     P: ProducerCursor,
     C: ConsumerCursor,
 {
+    pub fn new(cache: K, reservation: R, core: Arc<ChannelCore<T, P, C>>) -> Self {
+        Self {
+            cache,
+            reservation,
+            core,
+        }
+    }
+
+    #[inline(always)]
+    pub fn core(&self) -> &Arc<ChannelCore<T, P, C>> {
+        &self.core
+    }
+
     #[inline(always)]
     pub fn try_push(&self, value: T) -> Result<T> {
-        let Some(sequence) = self.try_claim_n(1) else {
+        let Some(range) = self.try_claim_n(1) else {
             return Err(value);
         };
 
-        self.core.write(sequence, value);
-        self.core.publish(sequence);
+        unsafe { self.core.write(range.high(), value) }
+        self.core.publish(range);
 
         Ok(())
     }
 
-    #[inline]
-    pub fn push(&self, mut value: T) {
-        loop {
-            match self.try_push(value) {
-                Ok(()) => return,
-                Err(returned) => {
-                    value = returned;
-                    std::hint::spin_loop();
-                }
-            }
-        }
-    }
-
-    #[inline]
-    pub fn try_push_vector(&self, items: Vec<T>) -> Result<Vec<T>> {
-        let length = items.len() as i64;
-        self.core.assert_claim_size(length);
-
-        let Some(sequence) = self.try_claim_n(length) else {
-            return Err(items);
+    /// Attempts to reserve and initialize one element.
+    ///
+    /// # Safety
+    ///
+    /// - The callback must fully initialize the slot.
+    /// - The callback must not unwind.
+    /// - The slot must not be initialized more than once.
+    /// - No references to the slot may escape the callback.
+    #[cfg(feature = "emplace")]
+    #[inline(always)]
+    pub unsafe fn try_emplace<F>(&self, f: F) -> Result<F>
+    where
+        F: FnOnce(&mut MaybeUninit<T>),
+    {
+        let Some(range) = self.try_claim_n(1) else {
+            return Err(f);
         };
 
-        let high = sequence;
-        let low = high - (length - 1);
+        unsafe { f(&mut *self.core.get_ptr(range.high())) };
 
-        for (sequence, element) in (low..=high).zip(items) {
-            self.core.write(sequence, element);
-        }
-
-        self.core.publish_range(low, high);
+        self.core.publish(range);
 
         Ok(())
     }
 
-    #[inline]
-    pub fn push_vector(&self, mut items: Vec<T>) {
-        loop {
-            match self.try_push_vector(items) {
-                Ok(()) => return,
-                Err(returned) => {
-                    items = returned;
-                    std::hint::spin_loop();
-                }
-            }
-        }
+    #[inline(always)]
+    pub fn push(&self, value: T) {
+        let range = self.claim_n(1);
+
+        unsafe { self.core.write(range.high(), value) }
+        self.core.publish(range);
     }
 
-    #[inline]
-    pub fn try_push_array(&self, items: Box<[T]>) -> Result<Box<[T]>> {
-        let length = items.len() as i64;
-        self.core.assert_claim_size(length);
+    /// Reserves and initialize one element.
+    ///
+    /// # Safety
+    ///
+    /// - The callback must fully initialize the slot.
+    /// - The callback must not unwind.
+    /// - The slot must not be initialized more than once.
+    /// - No references to the slot may escape the callback.
+    #[cfg(feature = "emplace")]
+    #[inline(always)]
+    pub unsafe fn emplace<F>(&self, f: F)
+    where
+        F: FnOnce(&mut MaybeUninit<T>),
+    {
+        let range = self.claim_n(1);
 
-        let Some(sequence) = self.try_claim_n(length) else {
-            return Err(items);
-        };
+        unsafe { f(&mut *self.core.get_ptr(range.high())) };
 
-        let high = sequence;
-        let low = high - (length - 1);
-
-        for (sequence, element) in (low..=high).zip(items) {
-            self.core.write(sequence, element);
-        }
-
-        self.core.publish_range(low, high);
-
-        Ok(())
+        self.core.publish(range);
     }
 
-    #[inline]
-    pub fn push_array(&self, mut items: Box<[T]>) {
+    fn try_lease_n(&self, n: i64) -> Option<impl WriteLease<T>> {
+        let range = self.try_claim_n(n)?;
+        Some(self.core.write_lease(range))
+    }
+
+    pub fn try_lease(&self, n: usize) -> Option<impl WriteLease<T>> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+        self.try_lease_n(n)
+    }
+
+    pub fn lease(&self, n: usize) -> impl WriteLease<T> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+
         loop {
-            match self.try_push_array(items) {
-                Ok(()) => return,
-                Err(returned) => {
-                    items = returned;
-                    std::hint::spin_loop();
-                }
+            if let Some(lease) = self.try_lease_n(n) {
+                return lease;
             }
+            core::hint::spin_loop();
         }
     }
 }
 
-impl<T, K, R, P, C> Receiver<T, K, R, P, C>
+impl<T, K, R, P, C> GenericReceiver<T, K, R, P, C>
 where
     K: Cache,
     R: Reservation,
     P: ProducerCursor,
     C: ConsumerCursor,
 {
-    #[inline]
+    pub fn new(cache: K, reservation: R, core: Arc<ChannelCore<T, P, C>>) -> Self {
+        Self {
+            cache,
+            reservation,
+            core,
+        }
+    }
+
+    #[inline(always)]
+    pub fn core(&self) -> &Arc<ChannelCore<T, P, C>> {
+        &self.core
+    }
+
+    #[inline(always)]
     pub fn try_take(&self) -> Option<T> {
-        let sequence = self.try_claim_n(1)?;
-        let value = self.core.take(sequence);
-        self.core.complete(sequence);
+        let range = self.try_claim_n(1)?;
+        let value = unsafe { self.core.take(range.high()) };
+        self.core.complete(range);
         Some(value)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn take(&self) -> T {
-        loop {
-            if let Some(value) = self.try_take() {
-                return value;
-            }
-            std::hint::spin_loop()
-        }
+        let range = self.claim_n(1);
+        let value = unsafe { self.core.take(range.high()) };
+        self.core.complete(range);
+        value
     }
 
-    #[inline]
-    pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<()> {
-        let length = (buffer.capacity() - buffer.len()) as i64;
-        self.core.assert_claim_size(length);
-        
-        let available = self.try_claim_n(length)?;
+    #[inline(always)]
+    pub fn try_lease(&self, n: usize) -> Option<impl ReadLease<T>> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
 
-        let high = std::cmp::min(, );
-        let low = high - (length - 1);
-        for i in low..=high {
-            buffer.push(self.core.take(i));
-        }
-        self.core.complete_range(low, high);
-        Some(())
+        let range = self.try_claim_n(n)?;
+        Some(self.core.read_lease(range))
     }
 
-    #[inline]
-    pub fn take_batch(&self, buffer: &mut Vec<T>) {
-        while let None = self.try_take_batch(buffer) {
-            std::hint::spin_loop();
-        }
+    #[inline(always)]
+    pub fn lease(&self, n: usize) -> impl ReadLease<T> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+
+        let range = self.claim_n(n);
+        self.core.read_lease(range)
     }
 }
