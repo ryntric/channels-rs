@@ -1,7 +1,14 @@
 use crate::availability::AvailabilityBuffer;
 use crate::reservation::{Reservation, SharedReservation};
 use crate::sequence::SharedSequence;
+use std::ops::RangeInclusive;
 use std::sync::atomic::Ordering::{Acquire, Release};
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Range {
+    low: i64,
+    high: i64,
+}
 
 pub(crate) trait Cursor: Send + Sync {
     fn upper_bound(&self) -> i64;
@@ -10,20 +17,50 @@ pub(crate) trait Cursor: Send + Sync {
 }
 
 pub(crate) trait ProducerCursor: Cursor {
-    fn publish(&self, sequence: i64);
+    fn publish(&self, range: Range);
 
-    fn publish_range(&self, low: i64, high: i64);
+    fn publish_range(&self, range: Range);
 }
 
 pub(crate) trait ConsumerCursor: Cursor {
-    fn complete(&self, sequence: i64);
+    fn complete(&self, range: Range);
 
-    fn complete_range(&self, low: i64, high: i64);
+    fn complete_range(&self, range: Range);
 }
 
 pub(crate) struct TrackedCursor {
     reservation: SharedReservation,
     availability: AvailabilityBuffer,
+}
+
+impl Range {
+    pub fn new(low: i64, high: i64) -> Self {
+        Self { low, high }
+    }
+
+    pub fn len(&self) -> usize {
+        (self.high - self.low) as usize
+    }
+
+    #[inline(always)]
+    pub fn low(&self) -> i64 {
+        self.low
+    }
+
+    #[inline(always)]
+    pub fn high(&self) -> i64 {
+        self.high
+    }
+}
+
+impl IntoIterator for Range {
+    type Item = i64;
+    type IntoIter = RangeInclusive<i64>;
+
+    #[inline(always)]
+    fn into_iter(self) -> Self::IntoIter {
+        self.low..=self.high
+    }
 }
 
 impl TrackedCursor {
@@ -66,48 +103,46 @@ impl Cursor for DirectCursor {
 
 impl ProducerCursor for DirectCursor {
     #[inline(always)]
-    fn publish(&self, sequence: i64) {
-        self.committed.store(sequence, Release);
+    fn publish(&self, range: Range) {
+        self.committed.store(range.high(), Release);
     }
 
-    #[inline(always)]
-    fn publish_range(&self, _: i64, high: i64) {
-        self.publish(high);
+    fn publish_range(&self, range: Range) {
+        self.publish(range);
     }
 }
 
 impl ConsumerCursor for DirectCursor {
     #[inline(always)]
-    fn complete(&self, sequence: i64) {
-        self.committed.store(sequence, Release);
+    fn complete(&self, range: Range) {
+        self.committed.store(range.high(), Release);
     }
 
-    #[inline(always)]
-    fn complete_range(&self, _: i64, high: i64) {
-        self.complete(high);
+    fn complete_range(&self, range: Range) {
+        self.publish(range);
     }
 }
 
 impl ProducerCursor for TrackedCursor {
     #[inline(always)]
-    fn publish(&self, sequence: i64) {
-        self.availability.set(sequence);
+    fn publish(&self, range: Range) {
+        self.availability.set(range.high());
     }
 
     #[inline(always)]
-    fn publish_range(&self, low: i64, high: i64) {
-        self.availability.set_range(low, high);
+    fn publish_range(&self, range: Range) {
+        self.availability.set_range(range.low(), range.high());
     }
 }
 
 impl ConsumerCursor for TrackedCursor {
     #[inline(always)]
-    fn complete(&self, sequence: i64) {
-        self.availability.set(sequence);
+    fn complete(&self, range: Range) {
+        self.availability.set(range.high());
     }
 
     #[inline(always)]
-    fn complete_range(&self, low: i64, high: i64) {
-        self.availability.set_range(low, high);
+    fn complete_range(&self, range: Range) {
+        self.availability.set_range(range.low(), range.high());
     }
 }

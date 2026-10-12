@@ -15,15 +15,15 @@ impl<T> RingBuffer<T> {
         self.buffer.capacity()
     }
 
-    pub fn write(&self, sequence: i64, value: T) {
+    pub unsafe fn write(&self, sequence: i64, value: T) {
         unsafe { self.buffer.write(sequence, value) }
     }
 
-    pub fn take(&self, sequence: i64) -> T {
+    pub unsafe fn take(&self, sequence: i64) -> T {
         unsafe { self.buffer.take(sequence) }
     }
 
-    pub fn clear(&self, low: i64, high: i64) {
+    pub unsafe fn clear(&self, low: i64, high: i64) {
         unsafe { self.buffer.clear(low, high) }
     }
 }

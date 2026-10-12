@@ -1,8 +1,10 @@
 use crate::cache::Cache;
-use crate::claim::ClaimEndpoint;
-use crate::cursor::{ConsumerCursor, ProducerCursor};
+use crate::claim::{AvailabilityResult, ClaimEndpoint, ClaimResult};
+use crate::cursor::{ConsumerCursor, ProducerCursor, Range};
 use crate::reservation::Reservation;
 use crate::ring_buffer::RingBuffer;
+
+use crate::claim::ClaimResult::Unavailable;
 use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<(), T>;
@@ -52,12 +54,12 @@ where
 
     #[inline(always)]
     pub fn take(&self, sequence: i64) -> T {
-        self.ring_buffer.take(sequence)
+        unsafe { self.ring_buffer.take(sequence) }
     }
 
     #[inline(always)]
     pub fn write(&self, sequence: i64, value: T) {
-        self.ring_buffer.write(sequence, value);
+        unsafe { self.ring_buffer.write(sequence, value) }
     }
 
     #[inline(always)]
@@ -76,23 +78,23 @@ where
     }
 
     #[inline(always)]
-    pub fn publish(&self, sequence: i64) {
-        self.producer_cursor.publish(sequence);
+    pub fn publish(&self, range: Range) {
+        self.producer_cursor.publish(range);
     }
 
     #[inline(always)]
-    pub fn publish_range(&self, low: i64, high: i64) {
-        self.producer_cursor.publish_range(low, high);
+    pub fn publish_range(&self, range: Range) {
+        self.producer_cursor.publish_range(range);
     }
 
     #[inline(always)]
-    pub fn complete(&self, sequence: i64) {
-        self.consumer_cursor.complete(sequence);
+    pub fn complete(&self, range: Range) {
+        self.consumer_cursor.complete(range);
     }
 
     #[inline(always)]
-    pub fn complete_range(&self, low: i64, high: i64) {
-        self.consumer_cursor.complete_range(low, high);
+    pub fn complete_range(&self, range: Range) {
+        self.consumer_cursor.complete_range(range);
     }
 }
 
@@ -143,8 +145,17 @@ where
     }
 
     #[inline(always)]
-    fn required(&self, next: i64) -> i64 {
-        next - self.core.capacity()
+    fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
+        let next = current + n;
+        if matches!(self.try_ensure_availability(next - self.core.capacity()), AvailabilityResult::Unavailable) {
+            return Unavailable;
+        }
+
+        let reservation = self.reservation();
+        match reservation.try_reserve(current, next) {
+            Ok(sequence) => ClaimResult::Claimed(sequence),
+            Err(actual) => ClaimResult::Contended(actual),
+        }
     }
 }
 
@@ -173,10 +184,21 @@ where
     fn gating(&self) -> &Self::Gating {
         self.core.producer_cursor()
     }
-
+    
     #[inline(always)]
-    fn required(&self, next: i64) -> i64 {
-        next
+    fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
+        if matches!(self.try_ensure_availability(current + 1), AvailabilityResult::Unavailable) {
+            return ClaimResult::Unavailable;
+        }
+
+        let cache = self.cache();
+        let next = std::cmp::min(current + n, cache.value());
+
+        let reservation = self.reservation();
+        match reservation.try_reserve(current, next) {
+            Ok(range) => ClaimResult::Claimed(range),
+            Err(actual) => ClaimResult::Contended(actual),
+        }
     }
 }
 
@@ -202,12 +224,12 @@ where
 
     #[inline(always)]
     pub fn try_push(&self, value: T) -> Result<T> {
-        let Some(sequence) = self.try_claim_n(1) else {
+        let Some(range) = self.try_claim_n(1) else {
             return Err(value);
         };
 
-        self.core.write(sequence, value);
-        self.core.publish(sequence);
+        self.core.write(range.high(), value);
+        self.core.publish(range);
 
         Ok(())
     }
@@ -230,18 +252,15 @@ where
         let length = items.len() as i64;
         self.core.assert_claim_size(length);
 
-        let Some(sequence) = self.try_claim_n(length) else {
+        let Some(range) = self.try_claim_n(length) else {
             return Err(items);
         };
 
-        let high = sequence;
-        let low = high - (length - 1);
-
-        for (sequence, element) in (low..=high).zip(items) {
+        for (sequence, element) in range.into_iter().zip(items) {
             self.core.write(sequence, element);
         }
 
-        self.core.publish_range(low, high);
+        self.core.publish_range(range);
 
         Ok(())
     }
@@ -264,18 +283,15 @@ where
         let length = items.len() as i64;
         self.core.assert_claim_size(length);
 
-        let Some(sequence) = self.try_claim_n(length) else {
+        let Some(range) = self.try_claim_n(length) else {
             return Err(items);
         };
 
-        let high = sequence;
-        let low = high - (length - 1);
-
-        for (sequence, element) in (low..=high).zip(items) {
+        for (sequence, element) in range.into_iter().zip(items) {
             self.core.write(sequence, element);
         }
 
-        self.core.publish_range(low, high);
+        self.core.publish_range(range);
 
         Ok(())
     }
@@ -285,18 +301,15 @@ where
         let length = items.len() as i64;
         self.core.assert_claim_size(length);
 
-        let Some(sequence) = self.try_claim_n(length) else {
+        let Some(range) = self.try_claim_n(length) else {
             return Err(items);
         };
 
-        let high = sequence;
-        let low = high - (length - 1);
-
-        for (sequence, element) in (low..=high).zip(items) {
+        for (sequence, element) in range.into_iter().zip(items) {
             self.core.write(sequence, element);
         }
 
-        self.core.publish_range(low, high);
+        self.core.publish_range(range);
 
         Ok(())
     }
@@ -350,9 +363,9 @@ where
 
     #[inline]
     pub fn try_take(&self) -> Option<T> {
-        let sequence = self.try_claim_n(1)?;
-        let value = self.core.take(sequence);
-        self.core.complete(sequence);
+        let range = self.try_claim_n(1)?;
+        let value = self.core.take(range.high());
+        self.core.complete(range);
         Some(value)
     }
 
@@ -368,17 +381,15 @@ where
 
     #[inline]
     pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<()> {
-        let length = (buffer.capacity() - buffer.len()) as i64;
+        let length = buffer.capacity() as i64;
         self.core.assert_claim_size(length);
 
-        let high = self.try_claim_n(length)?;
-        let low = high - (length - 1);
-
-        for i in low..=high {
+        let range = self.try_claim_n(length)?;
+        for i in range {
             buffer.push(self.core.take(i));
         }
 
-        self.core.complete_range(low, high);
+        self.core.complete_range(range);
 
         Some(())
     }
