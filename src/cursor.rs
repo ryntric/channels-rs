@@ -1,4 +1,4 @@
-use crate::availability::AvailabilityBuffer;
+use crate::tracking::TrackingBuffer;
 use crate::reservation::{Reservation, SharedReservation};
 use crate::sequence::SharedSequence;
 use std::ops::RangeInclusive;
@@ -30,7 +30,7 @@ pub(crate) trait ConsumerCursor: Cursor {
 
 pub(crate) struct TrackedCursor {
     reservation: SharedReservation,
-    availability: AvailabilityBuffer,
+    availability: TrackingBuffer,
 }
 
 impl Range {
@@ -39,7 +39,7 @@ impl Range {
     }
 
     pub fn len(&self) -> usize {
-        (self.high - self.low) as usize
+        (self.high + 1 - self.low) as usize
     }
 
     #[inline(always)]
@@ -67,7 +67,7 @@ impl TrackedCursor {
     pub fn new(capacity: usize, reservation: SharedReservation) -> Self {
         Self {
             reservation,
-            availability: AvailabilityBuffer::new(capacity),
+            availability: TrackingBuffer::new(capacity),
         }
     }
 }

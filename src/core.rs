@@ -25,7 +25,9 @@ where
     C: ConsumerCursor,
 {
     fn drop(&mut self) {
-        // self.ring_buffer.clear(self.consumer_cursor.)
+        let low = self.consumer_cursor.upper_bound();
+        let high = self.producer_cursor.upper_bound();
+        unsafe { self.ring_buffer.free(low, high) }
     }
 }
 
@@ -53,12 +55,12 @@ where
     }
 
     #[inline(always)]
-    pub fn take(&self, sequence: i64) -> T {
+    pub unsafe fn take(&self, sequence: i64) -> T {
         unsafe { self.ring_buffer.take(sequence) }
     }
 
     #[inline(always)]
-    pub fn write(&self, sequence: i64, value: T) {
+    pub unsafe fn write(&self, sequence: i64, value: T) {
         unsafe { self.ring_buffer.write(sequence, value) }
     }
 
@@ -147,7 +149,10 @@ where
     #[inline(always)]
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
         let next = current + n;
-        if matches!(self.try_ensure_availability(next - self.core.capacity()), AvailabilityResult::Unavailable) {
+        if matches!(
+            self.try_ensure_availability(next - self.core.capacity()),
+            AvailabilityResult::Unavailable
+        ) {
             return Unavailable;
         }
 
@@ -184,10 +189,13 @@ where
     fn gating(&self) -> &Self::Gating {
         self.core.producer_cursor()
     }
-    
+
     #[inline(always)]
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
-        if matches!(self.try_ensure_availability(current + 1), AvailabilityResult::Unavailable) {
+        if matches!(
+            self.try_ensure_availability(current + 1),
+            AvailabilityResult::Unavailable
+        ) {
             return ClaimResult::Unavailable;
         }
 
@@ -228,7 +236,7 @@ where
             return Err(value);
         };
 
-        self.core.write(range.high(), value);
+        unsafe { self.core.write(range.high(), value) }
         self.core.publish(range);
 
         Ok(())
@@ -257,7 +265,7 @@ where
         };
 
         for (sequence, element) in range.into_iter().zip(items) {
-            self.core.write(sequence, element);
+            unsafe { self.core.write(sequence, element) }
         }
 
         self.core.publish_range(range);
@@ -288,7 +296,7 @@ where
         };
 
         for (sequence, element) in range.into_iter().zip(items) {
-            self.core.write(sequence, element);
+            unsafe { self.core.write(sequence, element) }
         }
 
         self.core.publish_range(range);
@@ -306,7 +314,7 @@ where
         };
 
         for (sequence, element) in range.into_iter().zip(items) {
-            self.core.write(sequence, element);
+            unsafe { self.core.write(sequence, element) }
         }
 
         self.core.publish_range(range);
@@ -364,7 +372,7 @@ where
     #[inline]
     pub fn try_take(&self) -> Option<T> {
         let range = self.try_claim_n(1)?;
-        let value = self.core.take(range.high());
+        let value = unsafe { self.core.take(range.high()) };
         self.core.complete(range);
         Some(value)
     }
@@ -380,23 +388,26 @@ where
     }
 
     #[inline]
-    pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<()> {
+    pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<usize> {
         let length = buffer.capacity() as i64;
         self.core.assert_claim_size(length);
 
         let range = self.try_claim_n(length)?;
         for i in range {
-            buffer.push(self.core.take(i));
+            buffer.push(unsafe { self.core.take(i) });
         }
 
         self.core.complete_range(range);
 
-        Some(())
+        Some(range.len())
     }
 
     #[inline]
-    pub fn take_batch(&self, buffer: &mut Vec<T>) {
-        while self.try_take_batch(buffer).is_none() {
+    pub fn take_batch(&self, buffer: &mut Vec<T>) -> usize {
+        loop {
+            if let Some(len) = self.try_take_batch(&mut *buffer) {
+                return len;
+            }
             std::hint::spin_loop();
         }
     }

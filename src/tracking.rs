@@ -1,0 +1,38 @@
+use crate::buffer::Buffer;
+use crate::sequence::INITIAL_VALUE;
+
+use std::sync::atomic::AtomicI64;
+use std::sync::atomic::Ordering::{Acquire, Release};
+
+pub(crate) struct TrackingBuffer {
+    buffer: Buffer<AtomicI64>,
+}
+
+impl TrackingBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            buffer: Buffer::with_default(capacity, || AtomicI64::new(INITIAL_VALUE)),
+        }
+    }
+
+    pub fn get_available(&self, low: i64, high: i64) -> i64 {
+        for sequence in low..=high {
+            let slot = unsafe { self.buffer.get(sequence) };
+            if slot.load(Acquire) != sequence {
+                return sequence - 1;
+            }
+        }
+        high
+    }
+
+    pub fn set(&self, sequence: i64) {
+        let slot = unsafe { self.buffer.get(sequence) };
+        slot.store(sequence, Release);
+    }
+
+    pub fn set_range(&self, low: i64, high: i64) {
+        for sequence in low..=high {
+            self.set(sequence);
+        }
+    }
+}

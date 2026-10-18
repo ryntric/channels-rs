@@ -81,11 +81,11 @@ macro_rules! receiver {
                 self.inner.take()
             }
             
-            pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<()> {
+            pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<usize> {
                 self.inner.try_take_batch(buffer)
             }
 
-            pub fn take_batch(&self, buffer: &mut Vec<T>) {
+            pub fn take_batch(&self, buffer: &mut Vec<T>) -> usize {
                 self.inner.take_batch(buffer)
             }
         }
