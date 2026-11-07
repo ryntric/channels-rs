@@ -6,7 +6,9 @@ use crate::cursor::{DirectCursor, TrackedCursor};
 use crate::reservation::{LocalReservation, SharedReservation};
 use crate::ring_buffer::RingBuffer;
 
-use std::sync::Arc;
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 
 macro_rules! sender {
     (
@@ -72,15 +74,15 @@ macro_rules! receiver {
                     inner: GenericReceiver::new(cache, reservation, core),
                 }
             }
-            
+
             pub fn try_take(&self) -> Option<T> {
                 self.inner.try_take()
             }
-            
+
             pub fn take(&self) -> T {
                 self.inner.take()
             }
-            
+
             pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<usize> {
                 self.inner.try_take_batch(buffer)
             }

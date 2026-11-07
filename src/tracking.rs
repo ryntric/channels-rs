@@ -1,8 +1,7 @@
 use crate::buffer::Buffer;
 use crate::sequence::INITIAL_VALUE;
-
-use std::sync::atomic::AtomicI64;
-use std::sync::atomic::Ordering::{Acquire, Release};
+use core::sync::atomic::AtomicI64;
+use core::sync::atomic::Ordering::{Acquire, Release};
 
 pub(crate) struct TrackingBuffer {
     buffer: Buffer<AtomicI64>,

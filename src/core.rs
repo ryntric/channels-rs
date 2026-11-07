@@ -1,13 +1,15 @@
 use crate::cache::Cache;
+use crate::claim::ClaimResult::Unavailable;
 use crate::claim::{AvailabilityResult, ClaimEndpoint, ClaimResult};
 use crate::cursor::{ConsumerCursor, ProducerCursor, Range};
 use crate::reservation::Reservation;
 use crate::ring_buffer::RingBuffer;
+use alloc::boxed::Box;
 
-use crate::claim::ClaimResult::Unavailable;
-use std::sync::Arc;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 
-pub type Result<T> = std::result::Result<(), T>;
+pub type Result<T> = core::result::Result<(), T>;
 
 pub(crate) struct ChannelCore<T, P, C>
 where
@@ -27,7 +29,7 @@ where
     fn drop(&mut self) {
         let low = self.consumer_cursor.upper_bound();
         let high = self.producer_cursor.upper_bound();
-        unsafe { self.ring_buffer.free(low, high) }
+        unsafe { self.ring_buffer.free(low + 1, high) }
     }
 }
 
@@ -200,7 +202,7 @@ where
         }
 
         let cache = self.cache();
-        let next = std::cmp::min(current + n, cache.value());
+        let next = core::cmp::min(current + n, cache.value());
 
         let reservation = self.reservation();
         match reservation.try_reserve(current, next) {
@@ -249,7 +251,7 @@ where
                 Ok(()) => return,
                 Err(returned) => {
                     value = returned;
-                    std::hint::spin_loop();
+                    core::hint::spin_loop();
                 }
             }
         }
@@ -280,7 +282,7 @@ where
                 Ok(()) => return,
                 Err(returned) => {
                     items = returned;
-                    std::hint::spin_loop();
+                    core::hint::spin_loop();
                 }
             }
         }
@@ -329,7 +331,7 @@ where
                 Ok(()) => return,
                 Err(returned) => {
                     items = returned;
-                    std::hint::spin_loop();
+                    core::hint::spin_loop();
                 }
             }
         }
@@ -342,7 +344,7 @@ where
                 Ok(()) => return,
                 Err(returned) => {
                     items = returned;
-                    std::hint::spin_loop();
+                    core::hint::spin_loop();
                 }
             }
         }
@@ -383,7 +385,7 @@ where
             if let Some(value) = self.try_take() {
                 return value;
             }
-            std::hint::spin_loop()
+            core::hint::spin_loop()
         }
     }
 
@@ -408,7 +410,7 @@ where
             if let Some(len) = self.try_take_batch(&mut *buffer) {
                 return len;
             }
-            std::hint::spin_loop();
+            core::hint::spin_loop();
         }
     }
 }

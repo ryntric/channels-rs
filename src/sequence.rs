@@ -1,6 +1,6 @@
-use std::cell::Cell;
-use std::ops::Deref;
-use std::sync::atomic::AtomicI64;
+use core::cell::Cell;
+use core::ops::Deref;
+use core::sync::atomic::AtomicI64;
 
 pub(crate) const INITIAL_VALUE: i64 = -1;
 

@@ -1,2 +1,1 @@
-pub use crate::channels::*;
-pub use crate::coordinator::{ConsumerWaitStrategyKind, ProducerWaitStrategyKind};
+pub use crate::channels::{mpmc, mpsc, spmc, spsc};

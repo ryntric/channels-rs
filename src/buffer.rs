@@ -1,7 +1,8 @@
-use std::alloc::{Layout, alloc, handle_alloc_error};
-use std::any::type_name;
-use std::mem::MaybeUninit;
-use std::ptr::NonNull;
+use alloc::alloc::{alloc, dealloc, handle_alloc_error};
+use core::alloc::Layout;
+use core::any::type_name;
+use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 
 pub(crate) struct Buffer<T> {
     ptr: NonNull<MaybeUninit<T>>,
@@ -149,7 +150,7 @@ impl<T> Drop for Buffer<T> {
             // SAFETY: `ptr` was allocated using `alloc` with exactly
             // this layout and has not been deallocated previously.
             // No references into the allocation may remain alive.
-            unsafe { std::alloc::dealloc(self.ptr.as_ptr().cast(), self.layout) }
+            unsafe { dealloc(self.ptr.as_ptr().cast(), self.layout) }
         }
     }
 }

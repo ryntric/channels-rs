@@ -1,8 +1,9 @@
-use crate::tracking::TrackingBuffer;
 use crate::reservation::{Reservation, SharedReservation};
 use crate::sequence::SharedSequence;
-use std::ops::RangeInclusive;
-use std::sync::atomic::Ordering::{Acquire, Release};
+use crate::tracking::TrackingBuffer;
+
+use core::ops::RangeInclusive;
+use core::sync::atomic::Ordering::{Acquire, Release};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Range {
@@ -39,7 +40,7 @@ impl Range {
     }
 
     pub fn len(&self) -> usize {
-        (self.high + 1 - self.low) as usize
+        (self.high - self.low + 1) as usize
     }
 
     #[inline(always)]

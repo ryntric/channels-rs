@@ -1,8 +1,7 @@
 use crate::cursor::Range;
 use crate::sequence::{LocalSequence, SharedSequence};
-
-use std::sync::Arc;
-use std::sync::atomic::Ordering::Relaxed;
+use alloc::sync::Arc;
+use core::sync::atomic::Ordering::Relaxed;
 
 pub(crate) type ReservationResult = Result<Range, i64>;
 
