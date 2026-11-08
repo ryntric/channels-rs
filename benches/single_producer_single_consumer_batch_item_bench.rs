@@ -15,21 +15,33 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
     let is_running_clone = is_running.clone();
 
     let handle = std::thread::spawn(move || {
-        let mut buffer = Vec::with_capacity(1024);
-
         while is_running_clone.load(Ordering::Acquire) {
-            rx.try_take_batch(&mut buffer);
-            std::hint::black_box(&buffer);
-            buffer.clear();
+            if let Some(lease) = rx.try_lease(1024) {
+                for value in lease {
+                    std::hint::black_box(value);
+                }
+            } else {
+                std::hint::spin_loop();
+            }
         }
     });
 
     let mut group = c.benchmark_group("spsc/batch");
-    group.throughput(Throughput::Elements(16));
-    group.bench_function("push_16", |b| {
-        let events = [Event::default(); 16];
+    group.throughput(Throughput::Elements(512));
 
-        b.iter(|| tx.push_array(events));
+    let mut sequence = 0i32;
+    group.bench_function("push_512", |b| {
+        b.iter(|| {
+            let mut lease = tx.lease(512);
+
+            for i in 0..512i32 {
+                lease.write(Event {
+                    number: sequence.wrapping_add(i),
+                });
+            }
+
+            sequence = sequence.wrapping_add(512);
+        });
     });
 
     group.finish();

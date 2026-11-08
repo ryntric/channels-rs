@@ -39,16 +39,17 @@ impl Range {
         Self { low, high }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         (self.high - self.low + 1) as usize
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn low(&self) -> i64 {
         self.low
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn high(&self) -> i64 {
         self.high
     }
@@ -58,7 +59,7 @@ impl IntoIterator for Range {
     type Item = i64;
     type IntoIter = RangeInclusive<i64>;
 
-    #[inline(always)]
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.low..=self.high
     }
@@ -74,12 +75,12 @@ impl TrackedCursor {
 }
 
 impl Cursor for TrackedCursor {
-    #[inline(always)]
+    #[inline]
     fn upper_bound(&self) -> i64 {
         self.reservation.reserved()
     }
 
-    #[inline(always)]
+    #[inline]
     fn highest_available(&self, low: i64, high: i64) -> i64 {
         self.availability.get_available(low, high)
     }
@@ -91,23 +92,24 @@ pub(crate) struct DirectCursor {
 }
 
 impl Cursor for DirectCursor {
-    #[inline(always)]
+    #[inline]
     fn upper_bound(&self) -> i64 {
         self.committed.load(Acquire)
     }
 
-    #[inline(always)]
+    #[inline]
     fn highest_available(&self, _: i64, high: i64) -> i64 {
         high
     }
 }
 
 impl ProducerCursor for DirectCursor {
-    #[inline(always)]
+    #[inline]
     fn publish(&self, range: Range) {
         self.committed.store(range.high(), Release);
     }
 
+    #[inline]
     fn publish_range(&self, range: Range) {
         self.publish(range);
     }
@@ -119,6 +121,7 @@ impl ConsumerCursor for DirectCursor {
         self.committed.store(range.high(), Release);
     }
 
+    #[inline]
     fn complete_range(&self, range: Range) {
         self.publish(range);
     }

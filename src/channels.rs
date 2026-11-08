@@ -3,12 +3,11 @@ use crate::claim::ClaimEndpoint;
 use crate::core::Result;
 use crate::core::{ChannelCore, GenericReceiver, GenericSender};
 use crate::cursor::{DirectCursor, TrackedCursor};
+use crate::lease::{ReadLease, WriteLease};
 use crate::reservation::{LocalReservation, SharedReservation};
 use crate::ring_buffer::RingBuffer;
 
-use alloc::boxed::Box;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 
 macro_rules! sender {
     (
@@ -25,6 +24,7 @@ macro_rules! sender {
                 }
             }
 
+            #[inline]
             pub fn try_push(&self, value: T) -> Result<T> {
                 self.inner.try_push(value)
             }
@@ -34,28 +34,14 @@ macro_rules! sender {
                 self.inner.push(value)
             }
 
-            pub fn try_push_vector(&self, items: Vec<T>) -> Result<Vec<T>> {
-                self.inner.try_push_vector(items)
+            #[inline]
+            pub fn try_lease(&self, n: usize) -> Option<impl WriteLease<T>> {
+                self.inner.try_lease(n)
             }
 
-            pub fn push_vector(&self, items: Vec<T>) {
-                self.inner.push_vector(items)
-            }
-
-            pub fn try_push_boxed_slice(&self, items: Box<[T]>) -> Result<Box<[T]>> {
-                self.inner.try_push_boxed_slice(items)
-            }
-
-            pub fn push_boxed_slice(&self, items: Box<[T]>) {
-                self.inner.push_boxed_slice(items)
-            }
-
-            pub fn try_push_array<const N: usize>(&self, items: [T; N]) -> Result<[T; N]> {
-                self.inner.try_push_array(items)
-            }
-
-            pub fn push_array<const N: usize>(&self, items: [T; N]) {
-                self.inner.push_array(items)
+            #[inline]
+            pub fn lease(&self, n: usize) -> impl WriteLease<T> {
+                self.inner.lease(n)
             }
         }
     };
@@ -75,20 +61,24 @@ macro_rules! receiver {
                 }
             }
 
+            #[inline]
             pub fn try_take(&self) -> Option<T> {
                 self.inner.try_take()
             }
 
+            #[inline]
             pub fn take(&self) -> T {
                 self.inner.take()
             }
 
-            pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<usize> {
-                self.inner.try_take_batch(buffer)
+            #[inline]
+            pub fn try_lease(&self, n: usize) -> Option<impl ReadLease<T>> {
+                self.inner.try_lease(n)
             }
 
-            pub fn take_batch(&self, buffer: &mut Vec<T>) -> usize {
-                self.inner.take_batch(buffer)
+            #[inline]
+            pub fn lease(&self, n: usize) -> impl ReadLease<T> {
+                self.inner.lease(n)
             }
         }
     };

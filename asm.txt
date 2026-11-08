@@ -1,0 +1,250 @@
+.section __TEXT,__text,regular,pure_instructions
+	.p2align	2
+alloca::trampoline::<alloca::with_alloca<(), <criterion::routine::Function<criterion::measurement::WallTime, <criterion::benchmark_group::BenchmarkGroup<criterion::measurement::WallTime>>::bench_function<&str, single_producer_single_consumer_batch_item_bench::bench_ring_buffer_offer_poll::{closure#1}>::{closure#0}, ()> as criterion::routine::Routine<criterion::measurement::WallTime, ()>>::bench::{closure#0}>::{closure#0}>:
+Lfunc_begin0:
+	.cfi_startproc
+	sub sp, sp, #64
+	.cfi_def_cfa_offset 64
+	stp x22, x21, [sp, #16]
+	stp x20, x19, [sp, #32]
+	stp x29, x30, [sp, #48]
+	add x29, sp, #48
+	.cfi_def_cfa w29, 16
+	.cfi_offset w30, -8
+	.cfi_offset w29, -16
+	.cfi_offset w19, -24
+	.cfi_offset w20, -32
+	.cfi_offset w21, -40
+	.cfi_offset w22, -48
+	.cfi_remember_state
+	ldp x19, x8, [x1, #16]
+	ldp x9, x10, [x1, #32]
+	ldp x21, x20, [x1, #48]
+	ldr x8, [x8]
+	str x8, [x19, #40]
+	str x10, [sp, #8]
+	add x8, sp, #8
+	; InlineAsm Start
+	; InlineAsm End
+	ldr x8, [x9]
+	ldp x1, x2, [x8]
+	mov x0, x19
+	bl <criterion::bencher::Bencher>::iter::<(), single_producer_single_consumer_batch_item_bench::bench_ring_buffer_offer_poll::{closure#1}::{closure#0}>
+	ldrb w8, [x19, #48]
+	tbz w8, #0, LBB0_3
+	strb wzr, [x19, #48]
+	ldr x20, [x20]
+	ldr x1, [x21, #16]
+	cmp x20, x1
+	b.hs LBB0_4
+	ldr x8, [x19]
+	mov w9, #51712
+	movk w9, #15258, lsl #16
+	umulh x10, x8, x9
+	mul x8, x8, x9
+	ldr w9, [x19, #8]
+	adds x0, x8, x9
+	cinc x1, x10, hs
+	bl ___floatuntidf
+	ldr x8, [x21, #8]
+	str d0, [x8, x20, lsl #3]
+	.cfi_def_cfa wsp, 64
+	ldp x29, x30, [sp, #48]
+	ldp x20, x19, [sp, #32]
+	ldp x22, x21, [sp, #16]
+	add sp, sp, #64
+	.cfi_def_cfa_offset 0
+	.cfi_restore w30
+	.cfi_restore w29
+	.cfi_restore w19
+	.cfi_restore w20
+	.cfi_restore w21
+	.cfi_restore w22
+	ret
+LBB0_3:
+	.cfi_restore_state
+Lloh0:
+	adrp x0, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.139@PAGE
+Lloh1:
+	add x0, x0, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.139@PAGEOFF
+Lloh2:
+	adrp x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.141@PAGE
+Lloh3:
+	add x2, x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.141@PAGEOFF
+	mov w1, #123
+	bl core::panicking::panic_fmt
+LBB0_4:
+Lloh4:
+	adrp x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.118@PAGE
+Lloh5:
+	add x2, x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.118@PAGEOFF
+	mov x0, x20
+	bl core::panicking::panic_bounds_check
+	.loh AdrpAdd	Lloh2, Lloh3
+	.loh AdrpAdd	Lloh0, Lloh1
+	.loh AdrpAdd	Lloh4, Lloh5
+Lfunc_end0:
+	.cfi_endproc
+
+	.p2align	2
+<criterion::bencher::Bencher>::iter::<(), single_producer_single_consumer_batch_item_bench::bench_ring_buffer_offer_poll::{closure#1}::{closure#0}>:
+Lfunc_begin1:
+	.cfi_startproc
+	.cfi_personality 155, _rust_eh_personality
+	.cfi_lsda 16, Lexception0
+	sub sp, sp, #128
+	.cfi_def_cfa_offset 128
+	stp x24, x23, [sp, #64]
+	stp x22, x21, [sp, #80]
+	stp x20, x19, [sp, #96]
+	stp x29, x30, [sp, #112]
+	add x29, sp, #112
+	.cfi_def_cfa w29, 16
+	.cfi_offset w30, -8
+	.cfi_offset w29, -16
+	.cfi_offset w19, -24
+	.cfi_offset w20, -32
+	.cfi_offset w21, -40
+	.cfi_offset w22, -48
+	.cfi_offset w23, -56
+	.cfi_offset w24, -64
+	.cfi_remember_state
+	mov x20, x2
+	mov x21, x1
+	mov x19, x0
+	mov w23, #1
+	strb w23, [x0, #48]
+	bl <std::time::Instant>::now
+	str x0, [sp]
+	str w1, [sp, #8]
+	ldr x22, [x19, #32]
+	mov x0, x22
+	bl <criterion::measurement::WallTime as criterion::measurement::Measurement>::start
+	mov x2, x0
+	mov x3, x1
+	ldr x8, [x19, #40]
+	cbz x8, LBB1_12
+	mov x9, #0
+	mov w10, #512
+LBB1_2:
+	ldr x24, [x21, #128]
+	ldr x12, [x24, #216]
+	stp x10, x12, [sp, #16]
+	cmp x12, #511
+	b.le LBB1_15
+	ldr x11, [x21, #64]
+	add x22, x11, #512
+	ldr x14, [x21]
+	sub x13, x22, x12
+	cmp x13, x14
+	b.le LBB1_7
+LBB1_4:
+	ldapur x12, [x24, #128]
+	cmp x13, x12
+	b.le LBB1_6
+	isb
+	ldr x11, [x21, #64]
+	add x22, x11, #512
+	ldr x24, [x21, #128]
+	ldr x12, [x24, #216]
+	ldr x14, [x21]
+	sub x13, x22, x12
+	cmp x13, x14
+	b.gt LBB1_4
+	b LBB1_7
+LBB1_6:
+	str x12, [x21]
+	ldr x24, [x21, #128]
+LBB1_7:
+	add x9, x9, #1
+	str x22, [x21, #64]
+	ldr w12, [x20]
+	add x11, x11, #1
+	mov w13, #512
+	mov x14, x12
+LBB1_8:
+	cmp x11, x22
+	b.gt LBB1_13
+	ldr x15, [x24, #208]
+	and x15, x15, x11
+	ldr x16, [x24, #192]
+	add x15, x16, x15, lsl #3
+	stp w23, w14, [x15]
+	add x11, x11, #1
+	add w14, w14, #1
+	subs w13, w13, #1
+	b.ne LBB1_8
+	add w11, w12, #512
+	str w11, [x20]
+	stlur x22, [x24, #64]
+	; InlineAsm Start
+	; InlineAsm End
+	cmp x9, x8
+	b.ne LBB1_2
+	ldr x22, [x19, #32]
+LBB1_12:
+	mov x0, x22
+	mov x1, x2
+	mov x2, x3
+	bl <criterion::measurement::WallTime as criterion::measurement::Measurement>::end
+	str x0, [x19]
+	str w1, [x19, #8]
+	mov x0, sp
+	bl <std::time::Instant>::elapsed
+	str x0, [x19, #16]
+	str w1, [x19, #24]
+	.cfi_def_cfa wsp, 128
+	ldp x29, x30, [sp, #112]
+	ldp x20, x19, [sp, #96]
+	ldp x22, x21, [sp, #80]
+	ldp x24, x23, [sp, #64]
+	add sp, sp, #128
+	.cfi_def_cfa_offset 0
+	.cfi_restore w30
+	.cfi_restore w29
+	.cfi_restore w19
+	.cfi_restore w20
+	.cfi_restore w21
+	.cfi_restore w22
+	.cfi_restore w23
+	.cfi_restore w24
+	ret
+LBB1_13:
+	.cfi_restore_state
+Lloh6:
+	adrp x0, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.310@PAGE
+Lloh7:
+	add x0, x0, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.310@PAGEOFF
+Lloh8:
+	adrp x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.312@PAGE
+Lloh9:
+	add x2, x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.312@PAGEOFF
+	mov w1, #50
+	bl core::panicking::panic
+	brk #0x1
+LBB1_15:
+Lloh10:
+	adrp x8, <i64 as core::fmt::Display>::fmt@GOTPAGE
+Lloh11:
+	ldr x8, [x8, <i64 as core::fmt::Display>::fmt@GOTPAGEOFF]
+	add x9, sp, #24
+	stp x9, x8, [sp, #32]
+	add x9, sp, #16
+	stp x9, x8, [sp, #48]
+Lloh12:
+	adrp x0, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.126@PAGE
+Lloh13:
+	add x0, x0, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.126@PAGEOFF
+Lloh14:
+	adrp x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.128@PAGE
+Lloh15:
+	add x2, x2, l_anon.df7a64904cd7b5ceb192dfb809e5a0a9.128@PAGEOFF
+	add x1, sp, #32
+	bl core::panicking::panic_fmt
+	stlur x22, [x24, #64]
+	bl __Unwind_Resume
+	.loh AdrpAdd	Lloh8, Lloh9
+	.loh AdrpAdd	Lloh6, Lloh7
+	.loh AdrpAdd	Lloh14, Lloh15
+	.loh AdrpAdd	Lloh12, Lloh13
+	.loh AdrpLdrGot	Lloh10, Lloh11

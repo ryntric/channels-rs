@@ -2,12 +2,11 @@ use crate::cache::Cache;
 use crate::claim::ClaimResult::Unavailable;
 use crate::claim::{AvailabilityResult, ClaimEndpoint, ClaimResult};
 use crate::cursor::{ConsumerCursor, ProducerCursor, Range};
+use crate::lease::{GenericReadLease, GenericWriteLease, ReadLease, WriteLease};
 use crate::reservation::Reservation;
 use crate::ring_buffer::RingBuffer;
-use alloc::boxed::Box;
 
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 
 pub type Result<T> = core::result::Result<(), T>;
 
@@ -19,18 +18,6 @@ where
     producer_cursor: P,
     consumer_cursor: C,
     ring_buffer: RingBuffer<T>,
-}
-
-impl<T, P, C> Drop for ChannelCore<T, P, C>
-where
-    P: ProducerCursor,
-    C: ConsumerCursor,
-{
-    fn drop(&mut self) {
-        let low = self.consumer_cursor.upper_bound();
-        let high = self.producer_cursor.upper_bound();
-        unsafe { self.ring_buffer.free(low + 1, high) }
-    }
 }
 
 impl<T, P, C> ChannelCore<T, P, C>
@@ -57,13 +44,23 @@ where
     }
 
     #[inline(always)]
-    pub unsafe fn take(&self, sequence: i64) -> T {
+    pub unsafe fn take(&self, sequence: i64) -> Option<T> {
         unsafe { self.ring_buffer.take(sequence) }
     }
 
     #[inline(always)]
     pub unsafe fn write(&self, sequence: i64, value: T) {
         unsafe { self.ring_buffer.write(sequence, value) }
+    }
+
+    #[inline(always)]
+    pub fn read_lease(&self, range: Range) -> impl ReadLease<T> {
+        GenericReadLease::new(self, range)
+    }
+
+    #[inline(always)]
+    pub fn write_lease(&self, range: Range) -> impl WriteLease<T> {
+        GenericWriteLease::new(self, range)
     }
 
     #[inline(always)]
@@ -257,96 +254,26 @@ where
         }
     }
 
-    #[inline]
-    pub fn try_push_vector(&self, items: Vec<T>) -> Result<Vec<T>> {
-        let length = items.len() as i64;
-        self.core.assert_claim_size(length);
-
-        let Some(range) = self.try_claim_n(length) else {
-            return Err(items);
-        };
-
-        for (sequence, element) in range.into_iter().zip(items) {
-            unsafe { self.core.write(sequence, element) }
-        }
-
-        self.core.publish_range(range);
-
-        Ok(())
+    fn try_lease_n(&self, n: i64) -> Option<impl WriteLease<T>> {
+        let range = self.try_claim_n(n)?;
+        Some(self.core.write_lease(range))
     }
 
-    #[inline]
-    pub fn push_vector(&self, mut items: Vec<T>) {
+    pub fn try_lease(&self, n: usize) -> Option<impl WriteLease<T>> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+        self.try_lease_n(n)
+    }
+
+    pub fn lease(&self, n: usize) -> impl WriteLease<T> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+
         loop {
-            match self.try_push_vector(items) {
-                Ok(()) => return,
-                Err(returned) => {
-                    items = returned;
-                    core::hint::spin_loop();
-                }
+            if let Some(lease) = self.try_lease_n(n) {
+                return lease;
             }
-        }
-    }
-
-    #[inline]
-    pub fn try_push_boxed_slice(&self, items: Box<[T]>) -> Result<Box<[T]>> {
-        let length = items.len() as i64;
-        self.core.assert_claim_size(length);
-
-        let Some(range) = self.try_claim_n(length) else {
-            return Err(items);
-        };
-
-        for (sequence, element) in range.into_iter().zip(items) {
-            unsafe { self.core.write(sequence, element) }
-        }
-
-        self.core.publish_range(range);
-
-        Ok(())
-    }
-
-    #[inline]
-    pub fn try_push_array<const N: usize>(&self, items: [T; N]) -> Result<[T; N]> {
-        let length = items.len() as i64;
-        self.core.assert_claim_size(length);
-
-        let Some(range) = self.try_claim_n(length) else {
-            return Err(items);
-        };
-
-        for (sequence, element) in range.into_iter().zip(items) {
-            unsafe { self.core.write(sequence, element) }
-        }
-
-        self.core.publish_range(range);
-
-        Ok(())
-    }
-
-    #[inline]
-    pub fn push_boxed_slice(&self, mut items: Box<[T]>) {
-        loop {
-            match self.try_push_boxed_slice(items) {
-                Ok(()) => return,
-                Err(returned) => {
-                    items = returned;
-                    core::hint::spin_loop();
-                }
-            }
-        }
-    }
-
-    #[inline]
-    pub fn push_array<const N: usize>(&self, mut items: [T; N]) {
-        loop {
-            match self.try_push_array(items) {
-                Ok(()) => return,
-                Err(returned) => {
-                    items = returned;
-                    core::hint::spin_loop();
-                }
-            }
+            core::hint::spin_loop();
         }
     }
 }
@@ -376,7 +303,7 @@ where
         let range = self.try_claim_n(1)?;
         let value = unsafe { self.core.take(range.high()) };
         self.core.complete(range);
-        Some(value)
+        value
     }
 
     #[inline]
@@ -389,26 +316,24 @@ where
         }
     }
 
-    #[inline]
-    pub fn try_take_batch(&self, buffer: &mut Vec<T>) -> Option<usize> {
-        let length = buffer.capacity() as i64;
-        self.core.assert_claim_size(length);
-
-        let range = self.try_claim_n(length)?;
-        for i in range {
-            buffer.push(unsafe { self.core.take(i) });
-        }
-
-        self.core.complete_range(range);
-
-        Some(range.len())
+    fn try_lease_n(&self, n: i64) -> Option<impl ReadLease<T>> {
+        let range = self.try_claim_n(n)?;
+        Some(self.core.read_lease(range))
     }
 
-    #[inline]
-    pub fn take_batch(&self, buffer: &mut Vec<T>) -> usize {
+    pub fn try_lease(&self, n: usize) -> Option<impl ReadLease<T>> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+        self.try_lease_n(n)
+    }
+
+    pub fn lease(&self, n: usize) -> impl ReadLease<T> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+
         loop {
-            if let Some(len) = self.try_take_batch(&mut *buffer) {
-                return len;
+            if let Some(lease) = self.try_lease_n(n) {
+                return lease;
             }
             core::hint::spin_loop();
         }

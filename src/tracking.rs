@@ -4,20 +4,20 @@ use core::sync::atomic::AtomicI64;
 use core::sync::atomic::Ordering::{Acquire, Release};
 
 pub(crate) struct TrackingBuffer {
-    buffer: Buffer<AtomicI64>,
+    internal: Buffer<AtomicI64>,
 }
 
 impl TrackingBuffer {
     pub fn new(capacity: usize) -> Self {
         Self {
-            buffer: Buffer::with_default(capacity, || AtomicI64::new(INITIAL_VALUE)),
+            internal: Buffer::with_initializer(capacity, || AtomicI64::new(INITIAL_VALUE)),
         }
     }
 
     pub fn get_available(&self, low: i64, high: i64) -> i64 {
         for sequence in low..=high {
-            let slot = unsafe { self.buffer.get(sequence) };
-            if slot.load(Acquire) != sequence {
+            let generation = unsafe { self.internal.with_ref(sequence, |value| value.load(Acquire)) };
+            if sequence != generation {
                 return sequence - 1;
             }
         }
@@ -25,8 +25,7 @@ impl TrackingBuffer {
     }
 
     pub fn set(&self, sequence: i64) {
-        let slot = unsafe { self.buffer.get(sequence) };
-        slot.store(sequence, Release);
+        unsafe { self.internal.with_ref(sequence, |value| value.store(sequence, Release)) }
     }
 
     pub fn set_range(&self, low: i64, high: i64) {
