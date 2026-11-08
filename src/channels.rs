@@ -24,22 +24,22 @@ macro_rules! sender {
                 }
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn try_push(&self, value: T) -> Result<T> {
                 self.inner.try_push(value)
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn push(&self, value: T) {
                 self.inner.push(value)
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn try_lease(&self, n: usize) -> Option<impl WriteLease<T>> {
                 self.inner.try_lease(n)
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn lease(&self, n: usize) -> impl WriteLease<T> {
                 self.inner.lease(n)
             }
@@ -61,22 +61,22 @@ macro_rules! receiver {
                 }
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn try_take(&self) -> Option<T> {
                 self.inner.try_take()
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn take(&self) -> T {
                 self.inner.take()
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn try_lease(&self, n: usize) -> Option<impl ReadLease<T>> {
                 self.inner.try_lease(n)
             }
 
-            #[inline]
+            #[inline(always)]
             pub fn lease(&self, n: usize) -> impl ReadLease<T> {
                 self.inner.lease(n)
             }

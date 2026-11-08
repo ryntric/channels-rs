@@ -1,5 +1,5 @@
 use crate::core::ChannelCore;
-use crate::cursor::{ConsumerCursor, ProducerCursor, Range};
+use crate::cursor::{ConsumerCursor, LogicalRange, ProducerCursor};
 
 pub trait WriteLease<T> {
     fn write(&mut self, value: T);
@@ -15,7 +15,7 @@ where
     C: ConsumerCursor,
 {
     core: &'core ChannelCore<T, P, C>,
-    range: Range,
+    range: LogicalRange,
     cursor: i64,
 }
 
@@ -24,7 +24,7 @@ where
     P: ProducerCursor,
     C: ConsumerCursor,
 {
-    pub(crate) fn new(core: &'core ChannelCore<T, P, C>, range: Range) -> Self {
+    pub(crate) fn new(core: &'core ChannelCore<T, P, C>, range: LogicalRange) -> Self {
         Self {
             core,
             range,
@@ -38,7 +38,7 @@ where
     P: ProducerCursor,
     C: ConsumerCursor,
 {
-    #[inline]
+    #[inline(always)]
     fn write(&mut self, value: T) {
         assert!(self.cursor <= self.range.high());
 
@@ -65,7 +65,7 @@ where
     C: ConsumerCursor,
 {
     core: &'core ChannelCore<T, P, C>,
-    range: Range,
+    range: LogicalRange,
     cursor: i64,
 }
 
@@ -74,7 +74,7 @@ where
     P: ProducerCursor,
     C: ConsumerCursor,
 {
-    pub(crate) fn new(core: &'core ChannelCore<T, P, C>, range: Range) -> Self {
+    pub(crate) fn new(core: &'core ChannelCore<T, P, C>, range: LogicalRange) -> Self {
         Self {
             core,
             range,
@@ -88,7 +88,7 @@ where
     P: ProducerCursor,
     C: ConsumerCursor,
 {
-    #[inline]
+    #[inline(always)]
     fn read(&mut self) -> Option<T> {
         while self.cursor <= self.range.high() {
             let value = unsafe { self.core.take(self.cursor) };

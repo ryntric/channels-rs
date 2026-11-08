@@ -1,10 +1,10 @@
 use crate::cache::Cache;
-use crate::cursor::{Cursor, Range};
+use crate::cursor::{Cursor, LogicalRange};
 use crate::reservation::Reservation;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ClaimResult {
-    Claimed(Range),
+    Claimed(LogicalRange),
     Contended(i64),
     Unavailable,
 }
@@ -60,7 +60,7 @@ pub(crate) trait ClaimEndpoint {
     }
 
     #[inline(always)]
-    fn try_claim_n(&self, n: i64) -> Option<Range> {
+    fn try_claim_n(&self, n: i64) -> Option<LogicalRange> {
         let reservation = self.reservation();
         let mut current = reservation.reserved();
 

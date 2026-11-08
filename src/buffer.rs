@@ -36,23 +36,24 @@ impl<T> Buffer<T> {
         }
     }
 
+    #[inline(always)]
     pub fn capacity(&self) -> i64 {
         self.capacity
     }
 
     #[inline(always)]
-    fn wrap_index(&self, sequence: i64) -> usize {
+    const fn wrap_index(&self, sequence: i64) -> usize {
         (sequence & self.mask) as usize
     }
 
-    #[inline]
+    #[inline(always)]
     pub unsafe fn write(&self, sequence: i64, value: T) {
         let index = self.wrap_index(sequence);
         let cell = unsafe { self.buf.get_unchecked(index) };
         unsafe { cell.get().write(value) }
     }
 
-    #[inline]
+    #[inline(always)]
     pub unsafe fn with_ref<F, R>(&self, sequence: i64, f: F) -> R
     where
         F: Fn(&T) -> R,
@@ -69,7 +70,7 @@ impl<T: Default> Buffer<T> {
         Self::with_initializer(capacity, T::default)
     }
 
-    #[inline]
+    #[inline(always)]
     pub unsafe fn take(&self, sequence: i64) -> T {
         let index = self.wrap_index(sequence);
         let cell = unsafe { self.buf.get_unchecked(index) };

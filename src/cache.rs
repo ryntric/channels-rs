@@ -12,7 +12,7 @@ pub(crate) struct LocalCache {
 }
 
 impl Clone for LocalCache {
-    #[inline]
+    #[inline(always)]
     fn clone(&self) -> Self {
         Self::default()
     }

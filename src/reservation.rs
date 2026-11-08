@@ -1,9 +1,9 @@
-use crate::cursor::Range;
+use crate::cursor::LogicalRange;
 use crate::sequence::{LocalSequence, SharedSequence};
 use alloc::sync::Arc;
 use core::sync::atomic::Ordering::Relaxed;
 
-pub(crate) type ReservationResult = Result<Range, i64>;
+pub(crate) type ReservationResult = Result<LogicalRange, i64>;
 
 pub(crate) trait Reservation {
     fn reserved(&self) -> i64;
@@ -25,7 +25,7 @@ impl Reservation for LocalReservation {
     #[inline(always)]
     fn try_reserve(&self, expected: i64, next: i64) -> ReservationResult {
         self.inner.set(next);
-        Ok(Range::new(expected + 1, next))
+        Ok(LogicalRange::new(expected + 1, next))
     }
 }
 
@@ -44,6 +44,6 @@ impl Reservation for SharedReservation {
     fn try_reserve(&self, expected: i64, next: i64) -> ReservationResult {
         self.inner
             .compare_exchange_weak(expected, next, Relaxed, Relaxed)
-            .map(|claimed| Range::new(claimed + 1, next))
+            .map(|claimed| LogicalRange::new(claimed + 1, next))
     }
 }

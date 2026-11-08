@@ -1,7 +1,7 @@
 use crate::cache::Cache;
 use crate::claim::ClaimResult::Unavailable;
 use crate::claim::{AvailabilityResult, ClaimEndpoint, ClaimResult};
-use crate::cursor::{ConsumerCursor, ProducerCursor, Range};
+use crate::cursor::{ConsumerCursor, LogicalRange, ProducerCursor};
 use crate::lease::{GenericReadLease, GenericWriteLease, ReadLease, WriteLease};
 use crate::reservation::Reservation;
 use crate::ring_buffer::RingBuffer;
@@ -54,12 +54,12 @@ where
     }
 
     #[inline(always)]
-    pub fn read_lease(&self, range: Range) -> impl ReadLease<T> {
+    pub fn read_lease(&self, range: LogicalRange) -> impl ReadLease<T> {
         GenericReadLease::new(self, range)
     }
 
     #[inline(always)]
-    pub fn write_lease(&self, range: Range) -> impl WriteLease<T> {
+    pub fn write_lease(&self, range: LogicalRange) -> impl WriteLease<T> {
         GenericWriteLease::new(self, range)
     }
 
@@ -79,22 +79,22 @@ where
     }
 
     #[inline(always)]
-    pub fn publish(&self, range: Range) {
+    pub fn publish(&self, range: LogicalRange) {
         self.producer_cursor.publish(range);
     }
 
     #[inline(always)]
-    pub fn publish_range(&self, range: Range) {
+    pub fn publish_range(&self, range: LogicalRange) {
         self.producer_cursor.publish_range(range);
     }
 
     #[inline(always)]
-    pub fn complete(&self, range: Range) {
+    pub fn complete(&self, range: LogicalRange) {
         self.consumer_cursor.complete(range);
     }
 
     #[inline(always)]
-    pub fn complete_range(&self, range: Range) {
+    pub fn complete_range(&self, range: LogicalRange) {
         self.consumer_cursor.complete_range(range);
     }
 }
@@ -241,7 +241,7 @@ where
         Ok(())
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn push(&self, mut value: T) {
         loop {
             match self.try_push(value) {
@@ -298,7 +298,7 @@ where
         &self.core
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn try_take(&self) -> Option<T> {
         let range = self.try_claim_n(1)?;
         let value = unsafe { self.core.take(range.high()) };
@@ -306,7 +306,7 @@ where
         value
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn take(&self) -> T {
         loop {
             if let Some(value) = self.try_take() {
