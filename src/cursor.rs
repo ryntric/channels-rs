@@ -87,6 +87,7 @@ impl Cursor for TrackedCursor {
 }
 
 #[derive(Default)]
+#[repr(transparent)]
 pub(crate) struct DirectCursor {
     committed: SharedSequence,
 }

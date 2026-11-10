@@ -15,8 +15,9 @@ keywords = [
 categories = ["concurrency", "data-structures"]
 
 [features]
-default = []
+default = ["std"]
 std = []
+emplace = []
 
 [dev-dependencies]
 criterion = { version = "0.8.2" }
@@ -37,3 +38,13 @@ harness = false
 [[bench]]
 name = "single_producer_single_consumer_single_item_bench"
 harness = false
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+debug = "line-tables-only"
+

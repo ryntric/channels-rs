@@ -6,7 +6,9 @@ use crate::lease::{GenericReadLease, GenericWriteLease, ReadLease, WriteLease};
 use crate::reservation::Reservation;
 use crate::ring_buffer::RingBuffer;
 
+use crate::buffer::RawParts;
 use alloc::sync::Arc;
+use core::mem::MaybeUninit;
 
 pub type Result<T> = core::result::Result<(), T>;
 
@@ -44,7 +46,7 @@ where
     }
 
     #[inline(always)]
-    pub unsafe fn take(&self, sequence: i64) -> Option<T> {
+    pub unsafe fn take(&self, sequence: i64) -> T {
         unsafe { self.ring_buffer.take(sequence) }
     }
 
@@ -54,13 +56,23 @@ where
     }
 
     #[inline(always)]
+    pub unsafe fn raw_parts(&self, range: &LogicalRange) -> RawParts<'_, T> {
+        unsafe { self.ring_buffer.raw_parts(range) }
+    }
+
+    #[inline(always)]
+    pub unsafe fn get_ptr(&self, sequence: i64) -> *mut MaybeUninit<T> {
+        unsafe { self.ring_buffer.get_ptr(sequence) }
+    }
+
+    #[inline(always)]
     pub fn read_lease(&self, range: LogicalRange) -> impl ReadLease<T> {
-        GenericReadLease::new(self, range)
+        GenericReadLease::new(self, range, unsafe { self.raw_parts(&range) })
     }
 
     #[inline(always)]
     pub fn write_lease(&self, range: LogicalRange) -> impl WriteLease<T> {
-        GenericWriteLease::new(self, range)
+        GenericWriteLease::new(self, range, unsafe { self.raw_parts(&range) })
     }
 
     #[inline(always)]
@@ -155,8 +167,7 @@ where
             return Unavailable;
         }
 
-        let reservation = self.reservation();
-        match reservation.try_reserve(current, next) {
+        match self.reservation().try_reserve(current, next) {
             Ok(sequence) => ClaimResult::Claimed(sequence),
             Err(actual) => ClaimResult::Contended(actual),
         }
@@ -201,8 +212,7 @@ where
         let cache = self.cache();
         let next = core::cmp::min(current + n, cache.value());
 
-        let reservation = self.reservation();
-        match reservation.try_reserve(current, next) {
+        match self.reservation().try_reserve(current, next) {
             Ok(range) => ClaimResult::Claimed(range),
             Err(actual) => ClaimResult::Contended(actual),
         }
@@ -241,17 +251,58 @@ where
         Ok(())
     }
 
+    /// Attempts to reserve and initialize one element.
+    ///
+    /// # Safety
+    ///
+    /// - The callback must fully initialize the slot.
+    /// - The callback must not unwind.
+    /// - The slot must not be initialized more than once.
+    /// - No references to the slot may escape the callback.
+    #[cfg(feature = "emplace")]
     #[inline(always)]
-    pub fn push(&self, mut value: T) {
-        loop {
-            match self.try_push(value) {
-                Ok(()) => return,
-                Err(returned) => {
-                    value = returned;
-                    core::hint::spin_loop();
-                }
-            }
-        }
+    pub unsafe fn try_emplace<F>(&self, f: F) -> Result<F>
+    where
+        F: FnOnce(&mut MaybeUninit<T>),
+    {
+        let Some(range) = self.try_claim_n(1) else {
+            return Err(f);
+        };
+
+        unsafe { f(&mut *self.core.get_ptr(range.high())) };
+
+        self.core.publish(range);
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn push(&self, value: T) {
+        let range = self.claim_n(1);
+
+        unsafe { self.core.write(range.high(), value) }
+        self.core.publish(range);
+    }
+
+    /// Reserves and initialize one element.
+    ///
+    /// # Safety
+    ///
+    /// - The callback must fully initialize the slot.
+    /// - The callback must not unwind.
+    /// - The slot must not be initialized more than once.
+    /// - No references to the slot may escape the callback.
+    #[cfg(feature = "emplace")]
+    #[inline(always)]
+    pub unsafe fn emplace<F>(&self, f: F)
+    where
+        F: FnOnce(&mut MaybeUninit<T>),
+    {
+        let range = self.claim_n(1);
+
+        unsafe { f(&mut *self.core.get_ptr(range.high())) };
+
+        self.core.publish(range);
     }
 
     fn try_lease_n(&self, n: i64) -> Option<impl WriteLease<T>> {
@@ -303,39 +354,32 @@ where
         let range = self.try_claim_n(1)?;
         let value = unsafe { self.core.take(range.high()) };
         self.core.complete(range);
-        value
+        Some(value)
     }
 
     #[inline(always)]
     pub fn take(&self) -> T {
-        loop {
-            if let Some(value) = self.try_take() {
-                return value;
-            }
-            core::hint::spin_loop()
-        }
+        let range = self.claim_n(1);
+        let value = unsafe { self.core.take(range.high()) };
+        self.core.complete(range);
+        value
     }
 
-    fn try_lease_n(&self, n: i64) -> Option<impl ReadLease<T>> {
+    #[inline(always)]
+    pub fn try_lease(&self, n: usize) -> Option<impl ReadLease<T>> {
+        let n = n as i64;
+        self.core.assert_claim_size(n);
+
         let range = self.try_claim_n(n)?;
         Some(self.core.read_lease(range))
     }
 
-    pub fn try_lease(&self, n: usize) -> Option<impl ReadLease<T>> {
-        let n = n as i64;
-        self.core.assert_claim_size(n);
-        self.try_lease_n(n)
-    }
-
+    #[inline(always)]
     pub fn lease(&self, n: usize) -> impl ReadLease<T> {
         let n = n as i64;
         self.core.assert_claim_size(n);
 
-        loop {
-            if let Some(lease) = self.try_lease_n(n) {
-                return lease;
-            }
-            core::hint::spin_loop();
-        }
+        let range = self.claim_n(n);
+        self.core.read_lease(range)
     }
 }

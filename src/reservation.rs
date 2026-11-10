@@ -12,6 +12,7 @@ pub(crate) trait Reservation {
 }
 
 #[derive(Default)]
+#[repr(transparent)]
 pub(crate) struct LocalReservation {
     inner: LocalSequence,
 }
@@ -30,6 +31,7 @@ impl Reservation for LocalReservation {
 }
 
 #[derive(Default, Clone)]
+#[repr(transparent)]
 pub(crate) struct SharedReservation {
     inner: Arc<SharedSequence>,
 }

@@ -61,8 +61,7 @@ pub(crate) trait ClaimEndpoint {
 
     #[inline(always)]
     fn try_claim_n(&self, n: i64) -> Option<LogicalRange> {
-        let reservation = self.reservation();
-        let mut current = reservation.reserved();
+        let mut current = self.reservation().reserved();
 
         loop {
             match self.try_claim(n, current) {
@@ -71,6 +70,7 @@ pub(crate) trait ClaimEndpoint {
                 }
                 ClaimResult::Contended(actual) => {
                     current = actual;
+					std::thread::yield_now();
                 }
                 ClaimResult::Unavailable => {
                     return None;
@@ -78,4 +78,14 @@ pub(crate) trait ClaimEndpoint {
             }
         }
     }
+
+	#[inline(always)]
+	fn claim_n(&self, n: i64) -> LogicalRange {
+		loop {
+			if let Some(range) = self.try_claim_n(n) {
+				break range;
+			}
+			std::thread::yield_now();
+		}
+	}
 }

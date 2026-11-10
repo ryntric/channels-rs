@@ -1,25 +1,45 @@
-use crate::buffer::Buffer;
+use crate::buffer::{Buffer, RawParts};
+use crate::cursor::LogicalRange;
+use core::mem::MaybeUninit;
 
 pub(crate) struct RingBuffer<T> {
-    buffer: Buffer<Option<T>>,
+    inner: Buffer<T>,
 }
 
 impl<T> RingBuffer<T> {
     pub fn new(capacity: usize) -> Self {
         Self {
-            buffer: Buffer::with_default(capacity),
+            inner: Buffer::new(capacity),
         }
     }
 
-    pub fn capacity(&self) -> i64 {
-        self.buffer.capacity()
+    #[inline(always)]
+    pub const fn capacity(&self) -> i64 {
+        self.inner.capacity()
     }
 
+    #[inline]
     pub unsafe fn write(&self, sequence: i64, value: T) {
-        unsafe { self.buffer.write(sequence, Some(value)) }
+        unsafe { self.inner.write(sequence, value) }
     }
 
-    pub unsafe fn take(&self, sequence: i64) -> Option<T> {
-        unsafe { self.buffer.take(sequence) }
+    #[inline]
+    pub unsafe fn take(&self, sequence: i64) -> T {
+        unsafe { self.inner.take(sequence) }
     }
+
+    #[inline(always)]
+    pub unsafe fn get_ptr(&self, sequence: i64) -> *mut MaybeUninit<T> {
+        unsafe { self.inner.get_ptr(sequence) }
+    }
+
+    #[inline(always)]
+    pub unsafe fn raw_parts(&self, range: &LogicalRange) -> RawParts<'_, T> {
+        unsafe { self.inner.raw_parts(range) }
+    }
+	
+	#[inline(always)]
+	pub unsafe fn raw_parts_mut(&self, range: &LogicalRange) -> RawParts<'_, T> {
+		unsafe { self.inner.raw_parts(range) }
+	}
 }

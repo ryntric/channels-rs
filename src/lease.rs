@@ -1,8 +1,23 @@
+use crate::buffer::RawParts;
 use crate::core::ChannelCore;
 use crate::cursor::{ConsumerCursor, LogicalRange, ProducerCursor};
+use std::mem::MaybeUninit;
 
 pub trait WriteLease<T> {
     fn write(&mut self, value: T);
+
+    /// Reserves and initialize one element.
+    ///
+    /// # Safety
+    ///
+    /// - The callback must fully initialize the slot.
+    /// - The callback must not unwind.
+    /// - The slot must not be initialized more than once.
+    /// - No references to the slot may escape the callback.
+    #[cfg(feature = "emplace")]
+    unsafe fn emplace<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut MaybeUninit<T>);
 }
 
 pub trait ReadLease<T>: Iterator {
@@ -16,7 +31,7 @@ where
 {
     core: &'core ChannelCore<T, P, C>,
     range: LogicalRange,
-    cursor: i64,
+    parts: RawParts<'core, T>,
 }
 
 impl<'core, T, P, C> GenericWriteLease<'core, T, P, C>
@@ -24,12 +39,12 @@ where
     P: ProducerCursor,
     C: ConsumerCursor,
 {
-    pub(crate) fn new(core: &'core ChannelCore<T, P, C>, range: LogicalRange) -> Self {
-        Self {
-            core,
-            range,
-            cursor: range.low(),
-        }
+    pub(crate) fn new(
+        core: &'core ChannelCore<T, P, C>,
+        range: LogicalRange,
+        parts: RawParts<'core, T>,
+    ) -> Self {
+        Self { core, range, parts }
     }
 }
 
@@ -40,12 +55,20 @@ where
 {
     #[inline(always)]
     fn write(&mut self, value: T) {
-        assert!(self.cursor <= self.range.high());
+        if let Some(slot) = self.parts.next() {
+            slot.write(value);
+        }
+    }
 
-        // SAFETY: The slot belongs to the reserved range
-        // and contains an initialized value.
-        unsafe { self.core.write(self.cursor, value) }
-        self.cursor += 1;
+    #[cfg(feature = "emplace")]
+    #[inline(always)]
+    unsafe fn emplace<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut MaybeUninit<T>),
+    {
+        if let Some(slot) = self.parts.next() {
+            f(slot);
+        }
     }
 }
 
@@ -66,7 +89,7 @@ where
 {
     core: &'core ChannelCore<T, P, C>,
     range: LogicalRange,
-    cursor: i64,
+    parts: RawParts<'core, T>,
 }
 
 impl<'core, T, P, C> GenericReadLease<'core, T, P, C>
@@ -74,12 +97,12 @@ where
     P: ProducerCursor,
     C: ConsumerCursor,
 {
-    pub(crate) fn new(core: &'core ChannelCore<T, P, C>, range: LogicalRange) -> Self {
-        Self {
-            core,
-            range,
-            cursor: range.low(),
-        }
+    pub(crate) fn new(
+        core: &'core ChannelCore<T, P, C>,
+        range: LogicalRange,
+        parts: RawParts<'core, T>,
+    ) -> Self {
+        Self { core, range, parts }
     }
 }
 
@@ -90,15 +113,9 @@ where
 {
     #[inline(always)]
     fn read(&mut self) -> Option<T> {
-        while self.cursor <= self.range.high() {
-            let value = unsafe { self.core.take(self.cursor) };
-            self.cursor += 1;
-
-            if value.is_some() {
-                return value;
-            }
-        }
-        None
+        self.parts
+            .next()
+            .map(|slot| unsafe { slot.assume_init_read() })
     }
 }
 
@@ -120,8 +137,8 @@ where
     C: ConsumerCursor,
 {
     fn drop(&mut self) {
-        for sequence in self.cursor..=self.range.high() {
-            drop(unsafe { self.core.take(sequence) });
+        for slot in self.parts.by_ref() {
+            unsafe { slot.assume_init_drop() }
         }
         self.core.complete_range(self.range);
     }

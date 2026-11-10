@@ -15,8 +15,8 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
     let is_running_clone = is_running.clone();
 
     let handle = std::thread::spawn(move || {
-        while is_running_clone.load(Ordering::Acquire) {
-            if let Some(lease) = rx.try_lease(1024) {
+        while is_running_clone.load(Ordering::Relaxed) {
+            if let Some(lease) = rx.try_lease(512) {
                 for value in lease {
                     std::hint::black_box(value);
                 }
@@ -39,13 +39,14 @@ fn bench_ring_buffer_offer_poll(c: &mut Criterion) {
                     number: sequence.wrapping_add(i),
                 });
             }
+            drop(lease);
 
             sequence = sequence.wrapping_add(512);
         });
     });
 
     group.finish();
-    is_running.store(false, Ordering::Release);
+    is_running.store(false, Ordering::Relaxed);
 
     handle.join().expect("consumer thread panicked");
 }

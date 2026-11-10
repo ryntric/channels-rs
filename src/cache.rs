@@ -7,6 +7,7 @@ pub(crate) trait Cache {
 }
 
 #[derive(Default)]
+#[repr(transparent)]
 pub(crate) struct LocalCache {
     inner: LocalSequence,
 }
