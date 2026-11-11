@@ -26,7 +26,15 @@ pub(crate) trait ClaimEndpoint {
 
     fn gating(&self) -> &Self::Gating;
 
-    fn try_ensure_availability(&self, required: i64) -> AvailabilityResult {
+    /// Ensures that `required` is available, refreshing the cache if needed.
+    ///
+    /// `limit` is the highest sequence the caller could use (e.g. `current + n` for a
+    /// receiver); the gating cursor may use it to bound how far it scans.
+    ///
+    /// Any progress observed is stored in the cache even if `required` is still not
+    /// available, so the next attempt resumes from there instead of rescanning.
+    #[inline(always)]
+    fn try_ensure_availability(&self, required: i64, limit: i64) -> AvailabilityResult {
         let cache = self.cache();
         let cached = cache.value();
 
@@ -34,29 +42,30 @@ pub(crate) trait ClaimEndpoint {
             return AvailabilityResult::Available;
         }
 
-        if let Some(available) = self.try_available(cached + 1, required, self.gating()) {
+        let available = self.try_available(cached + 1, limit, self.gating());
+        if available > cached {
             cache.set_value(available);
-            return AvailabilityResult::Available;
         }
 
-        AvailabilityResult::Unavailable
+        if required <= available {
+            AvailabilityResult::Available
+        } else {
+            AvailabilityResult::Unavailable
+        }
     }
 
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult;
 
+    /// Returns the highest contiguous available sequence starting from `low`,
+    /// or `low - 1` if nothing new is available.
     #[inline(always)]
-    fn try_available(&self, low: i64, required: i64, gating: &Self::Gating) -> Option<i64> {
+    fn try_available(&self, low: i64, limit: i64, gating: &Self::Gating) -> i64 {
         let high = gating.upper_bound();
-        if required > high {
-            return None;
+        if high < low {
+            return low - 1;
         }
 
-        let available = gating.highest_available(low, high);
-        if required > available {
-            return None;
-        }
-
-        Some(available)
+        gating.highest_available(low, limit, high)
     }
 
     #[inline(always)]
