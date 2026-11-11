@@ -14,7 +14,12 @@ pub(crate) struct LogicalRange {
 pub(crate) trait Cursor: Send + Sync {
     fn upper_bound(&self) -> i64;
 
-    fn highest_available(&self, low: i64, high: i64) -> i64;
+    /// Returns the highest contiguous available sequence, starting the search at `low`.
+    ///
+    /// `limit` is the highest sequence the caller can make use of; implementations that
+    /// probe slots one by one may stop shortly after it instead of scanning up to `high`.
+    /// The result is always within `low - 1..=high`.
+    fn highest_available(&self, low: i64, limit: i64, high: i64) -> i64;
 }
 
 pub(crate) trait ProducerCursor: Cursor {
@@ -28,6 +33,11 @@ pub(crate) trait ConsumerCursor: Cursor {
 
     fn complete_range(&self, range: LogicalRange);
 }
+
+/// How many slots past `max(low, limit)` a tracked cursor may probe in one call.
+/// Bounds the worst-case cost of a single scan while still amortizing the
+/// re-read of the shared upper bound over several subsequent claims.
+const SCAN_AHEAD: i64 = 64;
 
 pub(crate) struct TrackedCursor {
     reservation: SharedReservation,
@@ -81,8 +91,9 @@ impl Cursor for TrackedCursor {
     }
 
     #[inline(always)]
-    fn highest_available(&self, low: i64, high: i64) -> i64 {
-        self.availability.get_available(low, high)
+    fn highest_available(&self, low: i64, limit: i64, high: i64) -> i64 {
+        let end = high.min(limit.max(low) + SCAN_AHEAD);
+        self.availability.get_available(low, end)
     }
 }
 
@@ -99,7 +110,7 @@ impl Cursor for DirectCursor {
     }
 
     #[inline(always)]
-    fn highest_available(&self, _: i64, high: i64) -> i64 {
+    fn highest_available(&self, _: i64, _: i64, high: i64) -> i64 {
         high
     }
 }

@@ -28,9 +28,13 @@ pub(crate) trait ClaimEndpoint {
 
     /// Ensures that `required` is available, refreshing the cache if needed.
     ///
+    /// `limit` is the highest sequence the caller could use (e.g. `current + n` for a
+    /// receiver); the gating cursor may use it to bound how far it scans.
+    ///
     /// Any progress observed is stored in the cache even if `required` is still not
     /// available, so the next attempt resumes from there instead of rescanning.
-    fn try_ensure_availability(&self, required: i64) -> AvailabilityResult {
+    #[inline(always)]
+    fn try_ensure_availability(&self, required: i64, limit: i64) -> AvailabilityResult {
         let cache = self.cache();
         let cached = cache.value();
 
@@ -38,7 +42,7 @@ pub(crate) trait ClaimEndpoint {
             return AvailabilityResult::Available;
         }
 
-        let available = self.try_available(cached + 1, self.gating());
+        let available = self.try_available(cached + 1, limit, self.gating());
         if available > cached {
             cache.set_value(available);
         }
@@ -55,13 +59,13 @@ pub(crate) trait ClaimEndpoint {
     /// Returns the highest contiguous available sequence starting from `low`,
     /// or `low - 1` if nothing new is available.
     #[inline(always)]
-    fn try_available(&self, low: i64, gating: &Self::Gating) -> i64 {
+    fn try_available(&self, low: i64, limit: i64, gating: &Self::Gating) -> i64 {
         let high = gating.upper_bound();
         if high < low {
             return low - 1;
         }
 
-        gating.highest_available(low, high)
+        gating.highest_available(low, limit, high)
     }
 
     #[inline(always)]
@@ -75,7 +79,7 @@ pub(crate) trait ClaimEndpoint {
                 }
                 ClaimResult::Contended(actual) => {
                     current = actual;
-					std::thread::yield_now();
+                    std::thread::yield_now();
                 }
                 ClaimResult::Unavailable => {
                     return None;
@@ -84,13 +88,13 @@ pub(crate) trait ClaimEndpoint {
         }
     }
 
-	#[inline(always)]
-	fn claim_n(&self, n: i64) -> LogicalRange {
-		loop {
-			if let Some(range) = self.try_claim_n(n) {
-				break range;
-			}
-			std::thread::yield_now();
-		}
-	}
+    #[inline(always)]
+    fn claim_n(&self, n: i64) -> LogicalRange {
+        loop {
+            if let Some(range) = self.try_claim_n(n) {
+                break range;
+            }
+            std::thread::yield_now();
+        }
+    }
 }
