@@ -17,10 +17,17 @@ impl TrackingBuffer {
         Self { inner: buffer }
     }
 
+    /// Returns the highest sequence `s` in `low - 1..=high` such that every
+    /// slot in `low..=s` has been published.
+    ///
+    /// Slot values only grow (`s`, `s + capacity`, `s + 2 * capacity`, ...), so a value
+    /// `>= sequence` means `sequence` itself was published at some point, even if the
+    /// slot has since been reused by a later lap. This keeps an observer that lags by
+    /// more than one lap from getting stuck on an already overwritten slot.
     pub fn get_available(&self, low: i64, high: i64) -> i64 {
         for sequence in low..=high {
             let value = unsafe { self.inner.get_ref(sequence) };
-            if sequence != value.load(Acquire) {
+            if value.load(Acquire) < sequence {
                 return sequence - 1;
             }
         }
