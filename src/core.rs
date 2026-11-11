@@ -160,8 +160,9 @@ where
     #[inline(always)]
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
         let next = current + n;
+        let required = next - self.core.capacity();
         if matches!(
-            self.try_ensure_availability(next - self.core.capacity()),
+            self.try_ensure_availability(required, required),
             AvailabilityResult::Unavailable
         ) {
             return Unavailable;
@@ -203,7 +204,7 @@ where
     #[inline(always)]
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
         if matches!(
-            self.try_ensure_availability(current + 1),
+            self.try_ensure_availability(current + 1, current + n),
             AvailabilityResult::Unavailable
         ) {
             return ClaimResult::Unavailable;
