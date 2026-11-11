@@ -9,7 +9,7 @@ pub(crate) enum ClaimResult {
     Unavailable,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AvailabilityResult {
     Available,
     Unavailable,
@@ -26,13 +26,6 @@ pub(crate) trait ClaimEndpoint {
 
     fn gating(&self) -> &Self::Gating;
 
-    /// Ensures that `required` is available, refreshing the cache if needed.
-    ///
-    /// `limit` is the highest sequence the caller could use (e.g. `current + n` for a
-    /// receiver); the gating cursor may use it to bound how far it scans.
-    ///
-    /// Any progress observed is stored in the cache even if `required` is still not
-    /// available, so the next attempt resumes from there instead of rescanning.
     #[inline(always)]
     fn try_ensure_availability(&self, required: i64, limit: i64) -> AvailabilityResult {
         let cache = self.cache();
@@ -56,8 +49,6 @@ pub(crate) trait ClaimEndpoint {
 
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult;
 
-    /// Returns the highest contiguous available sequence starting from `low`,
-    /// or `low - 1` if nothing new is available.
     #[inline(always)]
     fn try_available(&self, low: i64, limit: i64, gating: &Self::Gating) -> i64 {
         let high = gating.upper_bound();
@@ -65,12 +56,13 @@ pub(crate) trait ClaimEndpoint {
             return low - 1;
         }
 
-        gating.highest_available(low, limit, high)
+        gating.highest_available(low, high, limit)
     }
 
     #[inline(always)]
     fn try_claim_n(&self, n: i64) -> Option<LogicalRange> {
-        let mut current = self.reservation().reserved();
+        let reservation = self.reservation();
+        let mut current = reservation.reserved();
 
         loop {
             match self.try_claim(n, current) {

@@ -18,12 +18,12 @@ impl<T> RingBuffer<T> {
         self.inner.capacity()
     }
 
-    #[inline]
+    #[inline(always)]
     pub unsafe fn write(&self, sequence: i64, value: T) {
         unsafe { self.inner.write(sequence, value) }
     }
 
-    #[inline]
+    #[inline(always)]
     pub unsafe fn take(&self, sequence: i64) -> T {
         unsafe { self.inner.take(sequence) }
     }
@@ -34,12 +34,7 @@ impl<T> RingBuffer<T> {
     }
 
     #[inline(always)]
-    pub unsafe fn raw_parts(&self, range: &LogicalRange) -> RawParts<'_, T> {
+    pub unsafe fn raw_parts<'a>(&self, range: &LogicalRange) -> RawParts<'a, T> {
         unsafe { self.inner.raw_parts(range) }
     }
-	
-	#[inline(always)]
-	pub unsafe fn raw_parts_mut(&self, range: &LogicalRange) -> RawParts<'_, T> {
-		unsafe { self.inner.raw_parts(range) }
-	}
 }

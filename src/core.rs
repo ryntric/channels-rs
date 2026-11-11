@@ -56,7 +56,7 @@ where
     }
 
     #[inline(always)]
-    pub unsafe fn raw_parts(&self, range: &LogicalRange) -> RawParts<'_, T> {
+    pub unsafe fn raw_parts<'a>(&self, range: &LogicalRange) -> RawParts<'a, T> {
         unsafe { self.ring_buffer.raw_parts(range) }
     }
 
@@ -161,10 +161,7 @@ where
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
         let next = current + n;
         let required = next - self.core.capacity();
-        if matches!(
-            self.try_ensure_availability(required, required),
-            AvailabilityResult::Unavailable
-        ) {
+        if self.try_ensure_availability(required, next) == AvailabilityResult::Unavailable {
             return Unavailable;
         }
 
@@ -203,10 +200,8 @@ where
 
     #[inline(always)]
     fn try_claim(&self, n: i64, current: i64) -> ClaimResult {
-        if matches!(
-            self.try_ensure_availability(current + 1, current + n),
-            AvailabilityResult::Unavailable
-        ) {
+        if self.try_ensure_availability(current + 1, current + n) == AvailabilityResult::Unavailable
+        {
             return ClaimResult::Unavailable;
         }
 

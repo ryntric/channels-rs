@@ -15,13 +15,13 @@ pub trait WriteLease<T> {
     /// - The slot must not be initialized more than once.
     /// - No references to the slot may escape the callback.
     #[cfg(feature = "emplace")]
-    unsafe fn emplace<F>(&mut self, f: F)
-    where
-        F: FnOnce(&mut MaybeUninit<T>);
+    unsafe fn maybe_uninit_slot<F>(&mut self) -> Option<&mut MaybeUninit<T>>;
 }
 
 pub trait ReadLease<T>: Iterator {
     fn read(&mut self) -> Option<T>;
+
+    fn maybe_uninit_slot(&mut self) -> Option<&MaybeUninit<T>>;
 }
 
 pub(crate) struct GenericWriteLease<'core, T, P, C>
@@ -62,13 +62,8 @@ where
 
     #[cfg(feature = "emplace")]
     #[inline(always)]
-    unsafe fn emplace<F>(&mut self, f: F)
-    where
-        F: FnOnce(&mut MaybeUninit<T>),
-    {
-        if let Some(slot) = self.parts.next() {
-            f(slot);
-        }
+    unsafe fn maybe_uninit_slot<F>(&mut self) -> Option<&mut MaybeUninit<T>> {
+        self.parts.next()
     }
 }
 
@@ -116,6 +111,10 @@ where
         self.parts
             .next()
             .map(|slot| unsafe { slot.assume_init_read() })
+    }
+
+    fn maybe_uninit_slot(&mut self) -> Option<&MaybeUninit<T>> {
+        self.parts.next().map(|slot| &*slot)
     }
 }
 
