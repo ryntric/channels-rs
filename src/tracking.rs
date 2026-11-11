@@ -19,13 +19,19 @@ impl TrackingBuffer {
 
     #[inline]
     pub fn get_available(&self, low: i64, high: i64, limit: i64) -> i64 {
-        for sequence in low..=high.min(limit) {
+        let upper = high.min(limit);
+        if low > upper {
+            return low - 1;
+        }
+
+        for sequence in low..=upper {
             let value = unsafe { self.inner.get_ref(sequence) };
-            if sequence != value.load(Acquire) {
+            if value.load(Acquire) < sequence {
                 return sequence - 1;
             }
         }
-        high
+
+        upper
     }
 
     #[inline(always)]
